@@ -6,6 +6,7 @@ import (
     "os"
     "os/exec"
     "path/filepath"
+    "strings"
 
     "megatron/config"
     "megatron/filetree"
@@ -39,7 +40,7 @@ func main() {
         log.Fatal(err)
     }
 
-    rootNode, err := filetree.BuildTree(rootDir, nil)
+    rootNode, err = filetree.BuildTree(rootDir, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -98,6 +99,12 @@ func main() {
     if err := g.SetKeybinding("", gocui.KeyEnter, gocui.ModNone, openVideo); err != nil {
     	log.Panicln(err)
     }
+    if err := g.SetKeybinding("", '?', gocui.ModNone, showHelp); err != nil {
+        log.Panicln(err)
+    }
+    if err := g.SetKeybinding("", gocui.KeyCtrlF, gocui.ModNone, search); err != nil {
+        log.Panicln(err)
+    }
 
     currState = stack.State{0, 0}
 
@@ -118,8 +125,9 @@ func main() {
 }
 
 func usage() {
-    fmt.Println("Usage: megatron [DIR]")
-    fmt.Println("  DIR  Path to filmoteca")
+    fmt.Println("Usage: megatron [-c] [-d DIR]")
+    fmt.Println("  -d  DIR  Open in dir")
+    fmt.Println("  -c       Config default directory")
 }
 
 
@@ -131,17 +139,26 @@ func layout(g *gocui.Gui) error {
         return err
     }
     t.Clear()
-    t.Frame = false
-    fmt.Fprintf(t, "Megatron")
+    t.Frame = true
+    drawCenteredTitle(t, "Megatron")
 
-    l, err := g.SetView("left", 0, 3, maxX/2-1, maxY-1)
+    stbar, err := g.SetView("status", 0, maxY-2, maxX-1, maxY)
+    if err != nil && err != gocui.ErrUnknownView {
+        return err
+    }
+    stbar.Clear()
+    stbar.Frame = false
+    fmt.Fprintln(stbar, "[jk|↑↓] Move  [lh|→←] Open/Close [Ctrl-F] Search  [Enter] Play  [q] Quit")
+
+
+    l, err := g.SetView("left", 0, 3, maxX/2-1, maxY-2)
     if err != nil && err != gocui.ErrUnknownView {
         return err
     }
     l.Clear()
     l.Title = currNode.Path
 
-    r, err := g.SetView("right", maxX/2, 3, maxX-1, maxY-1)
+    r, err := g.SetView("right", maxX/2, 3, maxX-1, maxY-2)
     if err != nil && err != gocui.ErrUnknownView {
         return err
     }
@@ -166,6 +183,16 @@ func layout(g *gocui.Gui) error {
     printRightPanel(r)
 
     return nil
+}
+
+
+func drawCenteredTitle(v *gocui.View, title string) {
+    maxX, _ := v.Size()
+    pad := (maxX - len(title)) / 2
+    if pad < 0 {
+        pad = 0
+    }
+    fmt.Fprintln(v, strings.Repeat(" ", pad)+title)
 }
 
 
@@ -275,7 +302,10 @@ func openVideo(g *gocui.Gui, l *gocui.View) error {
         return nil
     }
 
-	exec.Command("vlc", "--fullscreen", selNode.Path)
+	cmd := exec.Command("vlc", "--fullscreen", selNode.Path)
+    if err := cmd.Start(); err != nil {
+        return err
+    }
     return nil
 }
 
@@ -305,4 +335,51 @@ func IsVideo(path string) bool {
 
 func quit(g *gocui.Gui, l *gocui.View) error {
     return gocui.ErrQuit
+}
+
+func showHelp(g *gocui.Gui, v *gocui.View) error {
+    maxX, maxY := g.Size()
+    if help, err := g.SetView("help", maxX/4, maxY/4, 3*maxX/4, 3*maxY/4); err != nil {
+        if err != gocui.ErrUnknownView {
+            return err
+        }
+        help.Title = "Help"
+        fmt.Fprintln(help, "Navigation:")
+        fmt.Fprintln(help, "↑/k, ↓/j - Move selection")
+        fmt.Fprintln(help, "→/l, ←/h - Open/Close directory")
+        fmt.Fprintln(help, "Enter - Play video")
+        fmt.Fprintln(help, "q/Ctrl+C - Quit")
+        
+        if _, err := g.SetCurrentView("help"); err != nil {
+            return err
+        }
+
+        // Bind "any key" to close help
+        // Here we use rune(0) trick to catch *every rune*
+        for r := rune(32); r <= 126; r++ { // printable ASCII
+            g.SetKeybinding("help", r, gocui.ModNone, closeHelp)
+        }
+        // also catch arrows, Enter, etc.
+        g.SetKeybinding("help", gocui.KeyArrowUp, gocui.ModNone, closeHelp)
+        g.SetKeybinding("help", gocui.KeyArrowDown, gocui.ModNone, closeHelp)
+        g.SetKeybinding("help", gocui.KeyArrowLeft, gocui.ModNone, closeHelp)
+        g.SetKeybinding("help", gocui.KeyArrowRight, gocui.ModNone, closeHelp)
+        g.SetKeybinding("help", gocui.KeyEnter, gocui.ModNone, closeHelp)
+        g.SetKeybinding("help", gocui.KeyEsc, gocui.ModNone, closeHelp)
+    }
+    return nil
+}
+
+func closeHelp(g *gocui.Gui, v *gocui.View) error {
+    if err := g.DeleteView("help"); err != nil {
+        return err
+    }
+    g.DeleteKeybindings("help") // remove all temp bindings
+    _, err := g.SetCurrentView("left")
+    return err
+}
+
+
+func search(g *gocui.Gui, v *gocui.View) error {
+    return nil
 }
