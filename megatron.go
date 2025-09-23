@@ -2,8 +2,9 @@ package main
 
 import (
     "fmt"
-    "os"
     "log"
+    "os"
+    "os/exec"
     "path/filepath"
 
     "megatron/filetree"
@@ -90,9 +91,9 @@ func main() {
     	log.Panicln(err)
     }
 
-//    if err := g.SetKeybinding("", gocui.KeyEnter, gocui.ModNone, openNode); err != nil {
-//    	log.Panicln(err)
-//    }
+    if err := g.SetKeybinding("", gocui.KeyEnter, gocui.ModNone, openVideo); err != nil {
+    	log.Panicln(err)
+    }
 
     currState = stack.State{0, 0}
 
@@ -129,7 +130,6 @@ func layout(g *gocui.Gui) error {
     t.Frame = false
     fmt.Fprintf(t, "Megatron")
 
-
     l, err := g.SetView("left", 0, 3, maxX/2-1, maxY-1)
     if err != nil && err != gocui.ErrUnknownView {
         return err
@@ -142,7 +142,7 @@ func layout(g *gocui.Gui) error {
         return err
     }
     r.Clear()
-    if selNode == nil {
+    if len(selNode.Children) == 0 {
         r.Title = ""
     } else {
         r.Title = filepath.Base(selNode.Path)
@@ -158,6 +158,14 @@ func layout(g *gocui.Gui) error {
     l.SetOrigin(0, currState.Origin)
 
 
+    printLeftPanel(l)
+    printRightPanel(r)
+
+    return nil
+}
+
+
+func printLeftPanel(l *gocui.View) {
     if len(leftItems) == 0 {
         fmt.Fprintf(l, "--Empty--")
     } else {
@@ -169,7 +177,10 @@ func layout(g *gocui.Gui) error {
     		}
     	}
     }
+}
 
+
+func printRightPanel(r *gocui.View) {
     if len(rightItems) == 0 {
         fmt.Fprintf(r, "--Empty--")
     } else {
@@ -177,10 +188,7 @@ func layout(g *gocui.Gui) error {
             fmt.Fprintf(r, "  %s\n", rItem)
         }    
     }
-
-    return nil
 }
-
 
 func cursorDown(g *gocui.Gui, l *gocui.View) error {
     if currState.Selected < len(leftItems)-1 {
@@ -198,16 +206,14 @@ func cursorUp(g *gocui.Gui, l *gocui.View) error {
     return nil
 }
 
-
 func selNodeUpdate() {
-    if len(currNode.Children) > 0 {
-        writeRightItems()
-    } else {
-        rightItems = rightItems[:0]
-        selNode = nil
-    }
-}
+    selNode = currNode.Children[currState.Selected]
+    rightItems = rightItems[:0]
 
+    if len(selNode.Children) > 0 {
+        writeRightItems()
+    } 
+}
 
 func openNode(g *gocui.Gui, l *gocui.View) error {
     if len(selNode.Children) == 0 {
@@ -215,7 +221,7 @@ func openNode(g *gocui.Gui, l *gocui.View) error {
     }
 
     stateStack.Push(currState)
-    currNode = selNode
+    currNode = currNode.Children[currState.Selected]
     selNode = currNode.Children[0]
 
     currState.Selected = 0
@@ -256,13 +262,56 @@ func writeLeftItems() {
     }
 }
 
-
 func writeRightItems() {
     rightItems = rightItems[:0]
     for _, node := range selNode.Children {
         rightItems = append(rightItems, filepath.Base(node.Path))
     }
 }
+
+
+func openVideo(g *gocui.Gui, l *gocui.View) error {
+    if !IsVideo(selNode.Path) {
+        return nil
+    }
+
+   	err := OpenWithVLC(selNode.Path)
+	if err != nil {
+		return err
+	}
+
+    return nil
+}
+
+
+func IsVideo(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+    // Is a regular file?
+	if !info.Mode().IsRegular() {
+		return false
+	}
+
+	// Looks like a video?
+	ext := filepath.Ext(path)
+	videoExts := map[string]bool{
+		".mp4": true, ".mkv": true, ".avi": true,
+		".mov": true, ".flv": true, ".wmv": true,
+	}
+	if videoExts[ext] {
+		return true
+	}
+	return false
+}
+
+func OpenWithVLC(path string) error {
+	cmd := exec.Command("vlc", "--fullscreen", path)
+	return cmd.Start()
+}
+
 
 func quit(g *gocui.Gui, l *gocui.View) error {
     return gocui.ErrQuit
