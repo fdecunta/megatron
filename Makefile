@@ -3,6 +3,7 @@ CONFIG_DIR := $(HOME)/.config/megatron
 
 install: megatron
 	mkdir -p $(CONFIG_DIR)
+	touch $(CONFIG_DIR)/config.txt
 	sudo cp megatron $(BIN_DIR)
 
 remove:
@@ -12,4 +13,9 @@ remove:
 megatron: megatron.go 
 	go build megatron.go
 
-.PHONY: install remove
+run:
+	mkdir -p $(CONFIG_DIR)
+	touch $(CONFIG_DIR)/config.txt
+	go run megatron.go ~/Filmoteca
+
+.PHONY: install remove run

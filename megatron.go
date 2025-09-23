@@ -7,6 +7,7 @@ import (
     "os/exec"
     "path/filepath"
 
+    "megatron/config"
     "megatron/filetree"
     "megatron/stack"
 
@@ -23,18 +24,22 @@ var currState stack.State
 var stateStack stack.Stack
 
 func main() {
-    if len(os.Args) != 2 {
-        usage()
-        os.Exit(1)
-    }
+    if len(os.Args) > 1 {
+        switch os.Args[1] {
+            case "-c":
+                config.EditConfig()
+                os.Exit(0)
+            case "-d":
+                os.Exit(1)
+        }
+    } 
 
-    root := os.Args[1]
-
-    if err := filetree.IsDir(root); err != nil {
+    rootDir, err := config.GetRootDir() 
+    if err != nil {
         log.Fatal(err)
     }
 
-    rootNode, err := filetree.BuildTree(root, nil)
+    rootNode, err := filetree.BuildTree(rootDir, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -48,7 +53,6 @@ func main() {
     selNode = rootNode.Children[0]
 
 
-    /* ------------------------- */
     // Start TUI
     g, err := gocui.NewGui(gocui.OutputNormal)
     if err != nil {
@@ -235,10 +239,6 @@ func openNode(g *gocui.Gui, l *gocui.View) error {
 
 
 func closeNode(g *gocui.Gui, l *gocui.View) error {
-    if currNode == rootNode {
-        return nil
-    }
-
     if stateStack.IsEmpty() {
         return nil
     }
@@ -275,11 +275,7 @@ func openVideo(g *gocui.Gui, l *gocui.View) error {
         return nil
     }
 
-   	err := OpenWithVLC(selNode.Path)
-	if err != nil {
-		return err
-	}
-
+	exec.Command("vlc", "--fullscreen", selNode.Path)
     return nil
 }
 
@@ -306,12 +302,6 @@ func IsVideo(path string) bool {
 	}
 	return false
 }
-
-func OpenWithVLC(path string) error {
-	cmd := exec.Command("vlc", "--fullscreen", path)
-	return cmd.Start()
-}
-
 
 func quit(g *gocui.Gui, l *gocui.View) error {
     return gocui.ErrQuit
