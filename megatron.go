@@ -25,19 +25,31 @@ var currState stack.State
 var stateStack stack.Stack
 
 func main() {
+    var rootDir string
+    var err error
+
     if len(os.Args) > 1 {
         switch os.Args[1] {
             case "-c":
                 config.EditConfig()
                 os.Exit(0)
             case "-d":
+                if len(os.Args) == 3 {
+                    err := filetree.IsDir(os.Args[2])
+                    if err != nil {
+                        log.Fatal(err)
+                    }
+                    rootDir = os.Args[2]
+                }
+            default:
+                usage()
                 os.Exit(1)
         }
-    } 
-
-    rootDir, err := config.GetRootDir() 
-    if err != nil {
-        log.Fatal(err)
+    } else { 
+        rootDir, err = config.GetRootDir() 
+        if err != nil {
+            log.Fatal(err)
+        }
     }
 
     rootNode, err = filetree.BuildTree(rootDir, nil)
@@ -108,15 +120,8 @@ func main() {
 
     currState = stack.State{0, 0}
 
-    leftItems = leftItems[:0]
-    for _, node := range currNode.Children {
-        leftItems = append(leftItems, filepath.Base(node.Path))
-    }
-
-    rightItems = rightItems[:0]
-    for _, node := range selNode.Children {
-        rightItems = append(rightItems, filepath.Base(node.Path))
-    }
+    writeLeftItems()
+    writeRightItems()
 
     if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
         log.Panicln(err)
@@ -128,6 +133,7 @@ func usage() {
     fmt.Println("Usage: megatron [-c] [-d DIR]")
     fmt.Println("  -d  DIR  Open in dir")
     fmt.Println("  -c       Config default directory")
+    fmt.Println("  -h       Help")
 }
 
 
@@ -285,14 +291,26 @@ func closeNode(g *gocui.Gui, l *gocui.View) error {
 func writeLeftItems() {
     leftItems = leftItems[:0]
     for _, node := range currNode.Children {
-        leftItems = append(leftItems, filepath.Base(node.Path))
+        var pathStr string
+        if node.IsDir {
+            pathStr = fmt.Sprintf("\033[1m%s\033[0m", filepath.Base(node.Path))
+        } else {
+            pathStr = fmt.Sprintf("%s", filepath.Base(node.Path))
+        }
+        leftItems = append(leftItems, pathStr)
     }
 }
 
 func writeRightItems() {
     rightItems = rightItems[:0]
     for _, node := range selNode.Children {
-        rightItems = append(rightItems, filepath.Base(node.Path))
+        var pathStr string
+        if node.IsDir {
+            pathStr = fmt.Sprintf("\033[1m%s\033[0m", filepath.Base(node.Path))
+        } else {
+            pathStr = fmt.Sprintf("%s", filepath.Base(node.Path))
+        }
+        rightItems = append(rightItems, pathStr)
     }
 }
 
