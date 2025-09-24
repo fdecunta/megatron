@@ -24,6 +24,8 @@ var rightItems []string
 var currState stack.State
 var stateStack stack.Stack
 
+var inputBuffer string
+
 func main() {
     var rootDir string
     var err error
@@ -77,6 +79,32 @@ func main() {
     // GUI managers and key bindings
     g.SetManagerFunc(layout)
 
+    err = setKeys(g) 
+    if err != nil {
+        log.Panicln(err)
+    }
+
+    currState = stack.State{0, 0}
+
+    writeLeftItems()
+    writeRightItems()
+
+    if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
+        log.Panicln(err)
+    }
+    
+}
+
+
+func usage() {
+    fmt.Println("Usage: megatron [-c] [-d DIR]")
+    fmt.Println("  -d  DIR  Open in dir")
+    fmt.Println("  -c       Config default directory")
+    fmt.Println("  -h       Help")
+}
+
+
+func setKeys(g *gocui.Gui) error {
     if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone, quit); err != nil {
         log.Panicln(err)
     }
@@ -107,7 +135,6 @@ func main() {
     if err := g.SetKeybinding("", 'h', gocui.ModNone, closeNode); err != nil {
     	log.Panicln(err)
     }
-
     if err := g.SetKeybinding("", gocui.KeyEnter, gocui.ModNone, openVideo); err != nil {
     	log.Panicln(err)
     }
@@ -118,22 +145,7 @@ func main() {
         log.Panicln(err)
     }
 
-    currState = stack.State{0, 0}
-
-    writeLeftItems()
-    writeRightItems()
-
-    if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
-        log.Panicln(err)
-    }
-    
-}
-
-func usage() {
-    fmt.Println("Usage: megatron [-c] [-d DIR]")
-    fmt.Println("  -d  DIR  Open in dir")
-    fmt.Println("  -c       Config default directory")
-    fmt.Println("  -h       Help")
+    return nil
 }
 
 
@@ -292,10 +304,12 @@ func writeLeftItems() {
     leftItems = leftItems[:0]
     for _, node := range currNode.Children {
         var pathStr string
+        baseStr := filepath.Base(node.Path)
+        sizeStr := humanSize(node.Size)
         if node.IsDir {
-            pathStr = fmt.Sprintf("\033[1m%s\033[0m", filepath.Base(node.Path))
+            pathStr = fmt.Sprintf("\033[1m%s\033[0m - %s", baseStr, sizeStr)
         } else {
-            pathStr = fmt.Sprintf("%s", filepath.Base(node.Path))
+            pathStr = fmt.Sprintf("%s - %s", baseStr, sizeStr)
         }
         leftItems = append(leftItems, pathStr)
     }
@@ -398,6 +412,81 @@ func closeHelp(g *gocui.Gui, v *gocui.View) error {
 }
 
 
+
 func search(g *gocui.Gui, v *gocui.View) error {
+    maxX, maxY := g.Size()
+    // Input view at the bottom
+    s, err := g.SetView("input", 0, maxY-3, maxX-1, maxY-1)
+    if err != nil && err != gocui.ErrUnknownView {
+        return err
+    }
+    s.Clear()
+    s.Title = "Type something"
+    s.Editable = true
+
+    if _, err := g.SetCurrentView("input"); err != nil {
+        return err
+    }
+
+    g.SetKeybinding("input", gocui.KeyEnter, gocui.ModNone, submitInput)
+
     return nil
+}
+
+
+func submitInput(g *gocui.Gui, v *gocui.View) error {
+    inputBuffer = strings.TrimSpace(v.Buffer())
+    
+    // Apply filter or other logic
+    filterLeftItems(inputBuffer)
+
+    // Remove input view and go back to main
+    g.DeleteView("input")
+    _, err := g.SetCurrentView("left")
+    return err
+}
+
+func filterLeftItems(filter string) {
+    leftItems = leftItems[:0]
+    var newNodes []*filetree.Node
+
+    for _, node := range currNode.Children {
+        name := filepath.Base(node.Path)
+        if filter == "" || strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
+            leftItems = append(leftItems, name)
+            newNodes = append(newNodes, node)
+        }
+    }
+
+    currNode = &filetree.Node {
+        Parent: currNode,
+        IsDir: true,
+        Size: 1,
+        Path:filter,
+        Children: newNodes,
+    }
+
+}
+
+
+func humanSize(bytes int64) string {
+    const (
+        KB = 1024
+        MB = KB * 1024
+        GB = MB * 1024
+        TB = GB * 1024
+    )
+
+    switch {
+    case bytes >= TB:
+        return fmt.Sprintf("%.2f TB", float64(bytes)/float64(TB))
+    case bytes >= GB:
+        return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
+    case bytes >= MB:
+        return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
+    case bytes >= KB:
+        return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
+    default:
+        return fmt.Sprintf("%d B", bytes)
+    }
 }

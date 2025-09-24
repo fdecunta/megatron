@@ -29,6 +29,12 @@ Example config.txt:
 megatron
 ```
 
+Or open in a specific directory:
+
+```bash
+megatron -d ~/OtherFilmoteca
+```
+
 **Controls:**
 - Arrow keys or `hjkl` - navigate
 - Enter - play video
