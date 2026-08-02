@@ -1,4 +1,5 @@
 #include <dirent.h>
+#include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,9 +7,9 @@
 
 #include <sys/stat.h>
 
-
 #define MAXNAME_LEN 255      /* path name must be no longer than this */
 #define MAX_CHILDS  256      /* nodes max children nodes */
+#define MAX_INPUT   255      /* max input buffer */
 
 struct node {
 	int type;
@@ -18,17 +19,21 @@ struct node {
 	int n_children;
 };
 
-void usage(void);
 
+void usage(void);
 void walk_dir(struct node *n); 
 void join_path(char *dst, char *basename, char *filename, int d_type);
-
 struct node *new_node(int d_type, char *filename, struct node *parent);
+void free_tree(struct node *n);
+
+void print_screen(struct node *n);
+void print_help(void);
+
 
 int main(int argc, char *argv[]) 
 {
 	int ch;
-	char* dir = NULL;
+	char *dir = NULL;
 
 	while ((ch = getopt(argc, argv, "d:")) != -1) {
 		switch (ch) {
@@ -49,18 +54,48 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	struct stat *st = NULL;
-	stat(dir, st);
+	/* check dir is a directory */
+	struct stat sb;
+	stat(dir, &sb);
+	if (!S_ISDIR(sb.st_mode)) {
+		fprintf(stderr, "Erorr: %s is not a directory\n", dir);
+		return 1;
+	}
 
-	printf("%d\n", st->st_mode);
+	/* remove trailing '/' */
+	size_t len = strlen(dir);
+	if (dir[len - 1] == '/') 
+		dir[len - 1] = '\0';
 
-	
+	struct node *root = new_node(DT_DIR, dir, NULL);
+	walk_dir(root);
 
-//	struct node *root = new_node(DT_DIR, dir, NULL);
-	// walk_dir(&root);
-//	puts(root->path);
-//	free(root);
+	struct node *cur_node = root;
+	int c;
 
+	print_screen(cur_node);
+	int running = 1;
+	while (running == 1) {
+		printf("megatron> ");
+		c = getchar();
+
+		switch(c) {
+		case 'q':
+			running = 0;
+			break;
+		case 'h':
+			print_help();
+			break;
+		case 'p':
+			print_screen(cur_node);
+			break;
+		default:
+			printf("\n");
+			break;
+		}
+	}
+
+	free_tree(root);
 	return 0;
 }
 
@@ -83,17 +118,16 @@ void walk_dir(struct node *n)
 		return;
 	}
 
-	/* do something as _base_ case */
-
 	while ((r = readdir(dirp)) != NULL) {
 		if ((strcmp(r->d_name, ".") == 0) || (strcmp(r->d_name, "..") == 0)) continue;
 		if ((r->d_type != DT_DIR) && (r->d_type != DT_REG)) continue;
 
-		/* create the node */
+		/* create node. add to parent */
+		struct node *child = new_node(r->d_type, r->d_name, n);
+		n->children[n->n_children++] = child;
 
-		if (r->d_type == DT_DIR) {
-			// TODO: walk _into_ the child
-//			walk_dir(name);
+		if (child->type == DT_DIR) {
+			walk_dir(child);
 		} 
 	}
 
@@ -103,25 +137,20 @@ void walk_dir(struct node *n)
 
 void join_path(char *dst, char *basename, char *filename, int d_type)
 {
+	memset(dst, '\0', MAXNAME_LEN + 1);
 	char *end = (d_type == DT_DIR ? "/" : "");
 	snprintf(dst, MAXNAME_LEN, "%s%s%s", basename, filename, end); 
 	dst[MAXNAME_LEN] = '\0';
 }
-
 
 struct node *new_node(int d_type, char *filename, struct node *parent) 
 {
 	struct node *n = (struct node *) malloc(sizeof(struct node));
 
 	n->type = d_type;
-
-	memset(n->path, '\0', MAXNAME_LEN + 1);
-	if (parent == NULL) {
-		strncpy(n->path, filename, MAXNAME_LEN);
-		n->path[MAXNAME_LEN] = '\0';
-	} else {
-		join_path(n->path, parent->path, filename, d_type);
-	}
+	
+	char *basename = (parent == NULL ? "" : parent->path);
+	join_path(n->path, basename, filename, d_type);
 
 	n->parent = parent;
 
@@ -130,4 +159,33 @@ struct node *new_node(int d_type, char *filename, struct node *parent)
 	n->n_children = (d_type == DT_REG ? -1 : 0);
 
 	return n;
+}
+
+void free_tree(struct node *n)
+{
+	for (int i=0; i < n->n_children; i++) {
+		if (n->children[i]->type == DT_DIR) {
+			free_tree(n->children[i]);
+		}
+		free(n->children[i]);
+	}
+
+	if (n->parent == NULL) 
+		free(n);
+}
+
+void print_screen(struct node *n)
+{
+	puts(n->path);
+	for (int i=0; i < n->n_children; i++) {
+		char *p = strdup(n->children[i]->path);
+		printf("%4d  %s\n", i, basename(p));
+		free(p);
+	}
+}
+
+void print_help(void)
+{
+	puts("megatron");
+	puts("\t your buddy");
 }
