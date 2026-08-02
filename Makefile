@@ -11,5 +11,8 @@ $(PROG): $(SRC)
 run: $(PROG)
 	./$(PROG) -d fake_filmoteca
 
+clean: 
+	rm -f $(PROG)
+
 mem: $(PROG)
 	valgrind --leak-check=full ./$(PROG) -d fake_filmoteca

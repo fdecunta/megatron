@@ -74,6 +74,8 @@ int main(int argc, char *argv[])
 	int c;
 
 	print_screen(cur_node);
+
+	return 0;
 	int running = 1;
 	while (running == 1) {
 		printf("megatron> ");
