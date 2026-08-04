@@ -1,3 +1,4 @@
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 
 #include <ctype.h>
@@ -21,6 +22,13 @@ struct node {
 	int n_children;
 };
 
+struct TUI {
+	int rows;
+	int cols;
+	struct termios orig_termios;
+};
+
+
 void 	usage(void);
 int 	walk_dir(struct node *n); 
 int 	join_path(char *dst, char *basename, char *filename, int d_type);
@@ -32,11 +40,12 @@ void 	 sort_childrens(struct node *n);
 
 void 	print_node(struct node *n);
 
-void 	disable_raw_mode(void);
-void 	enable_raw_mode(void);
-void 	init_tui(struct node *n);
+int 	disable_raw_mode(void);
+int 	enable_raw_mode(void);
+int 	init_tui(struct node *n);
+int 	clear_screen(void);
 
-struct termios orig_termios;
+struct TUI t;
 
 
 int main(int argc, char *argv[]) 
@@ -235,33 +244,72 @@ void sort_childrens(struct node *n)
 
 
 /* --- TUI functions --- */
-void disable_raw_mode(void)
+int disable_raw_mode(void)
 {
-	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &t.orig_termios) == -1) {
+		perror("disable_raw_mode(); tcsetattr();");
+		return -1;
+	}
+	return 0;
 }
 
-void enable_raw_mode(void) 
+int enable_raw_mode(void) 
 {
 	struct termios raw;
 
-	// TODO: set errors for these
+	if (tcgetattr(STDIN_FILENO, &t.orig_termios) == -1) {
+		perror("enable_raw_mode(); tcgetattr();");
+		return -1;
+	}
 
-	tcgetattr(STDIN_FILENO, &orig_termios);
-	// TODO: don't use atexit, is weird.
-	atexit(disable_raw_mode);
-
-	raw = orig_termios;
+	raw = t.orig_termios;
 	raw.c_lflag &= (tcflag_t)~(ECHO | ICANON);
 	raw.c_oflag &= (tcflag_t)~(OPOST);
 
-	tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
+		perror("enable_raw_mode(); tcsetattr();");
+		return -1;
+	}
+
+	return 0;
 }
 
-void init_tui(struct node *n)
+int clear_screen(void)
 {
-	printf("is here: %s\n", n->path);
-//	struct node *cur_node = root;
-	enable_raw_mode();
+	write(STDIN_FILENO, "\x1b[2J", 4);
+	write(STDOUT_FILENO, "\x1b[H", 3);
+	return 0;
+}
+
+int get_window_size(int *rows, int *cols)
+{
+	struct winsize ws;
+
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+		return -1;
+	} else {
+		*cols = ws.ws_col;
+		*rows = ws.ws_row;
+	}
+	return 0;
+}
+
+int init_tui(struct node *root)
+{
+	struct node *cur_node = root;
+	puts(cur_node->path);
+
+	if (get_window_size(&t.rows, &t.cols) == -1) return -1;
+	if (t.rows < 20 || t.cols < 50) {
+		fprintf(stderr, "Error: terminal is too small. Can't use megatron in a shit like this!\n");
+		return -1;
+	}
+
+	if (clear_screen() == -1) return -1;
+	if (enable_raw_mode() == -1) return -1;
+
+	printf("Rows: %d\r\n", t.rows);
+	printf("Cols: %d\r\n", t.cols);
 
 	char c;
 	while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
@@ -272,4 +320,7 @@ void init_tui(struct node *n)
 		}
 	}
 
+	if (disable_raw_mode() == -1) return -1;
+
+	return 0;
 }
