@@ -252,6 +252,7 @@ void enable_raw_mode(void)
 
 	raw = orig_termios;
 	raw.c_lflag &= (tcflag_t)~(ECHO | ICANON);
+	raw.c_oflag &= (tcflag_t)~(OPOST);
 
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
@@ -265,9 +266,9 @@ void init_tui(struct node *n)
 	char c;
 	while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
 		if (iscntrl(c)) {
-			printf("%d\n", c);
+			printf("%d\r\n", c);
 		} else {
-			printf("%d (%c)\n", c, c);
+			printf("%d (%c)\r\n", c, c);
 		}
 	}
 
