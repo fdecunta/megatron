@@ -27,6 +27,8 @@ void 	join_path(char *dst, char *basename, char *filename, int d_type);
 struct node * 	new_node(int d_type, char *filename, struct node *parent);
 void 	free_tree(struct node *n);
 
+static int cmpnodes(const void *a, const void *b);
+void sort_childrens(struct node *n);
 
 void print_node(struct node *n);
 
@@ -71,7 +73,7 @@ int main(int argc, char *argv[])
 	struct node *root = new_node(DT_DIR, dir, NULL);
 	walk_dir(root);
 
-	struct node *cur_node = root;
+//	struct node *cur_node = root;
 
 	print_node(root);
 	
@@ -111,6 +113,8 @@ void walk_dir(struct node *n)
 			walk_dir(child);
 		} 
 	}
+
+	sort_childrens(n);
 
 	closedir(dirp);
 }
@@ -172,4 +176,28 @@ void print_node(struct node *n)
 			puts(n->children[i]->path);
 		}
 	}
+}
+
+static int cmpnodes(const void *a, const void *b)
+{
+	/* The dereferencing is a bit weird here. 
+	qsort(3) pass 'const void *' args to this function.
+	Here the input is &n->children[i]. That is,
+	the address of a pointer to a node.
+
+	Since the pointer is void, need to cast it:
+	  (const struct node * const *)a
+	To get the actual pointer to the node, need to dereference:
+	  *(const struct node * const *)a
+	*/
+
+	const struct node *na = *(const struct node * const *)a;
+	const struct node *nb = *(const struct node * const *)b;
+	return strcmp(na->path, nb->path);
+}
+
+void sort_childrens(struct node *n)
+{
+	size_t nmemb = (size_t)n->n_children;
+	qsort(n->children, nmemb, sizeof(struct node *), cmpnodes);
 }
