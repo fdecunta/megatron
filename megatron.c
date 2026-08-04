@@ -1,3 +1,5 @@
+#include <sys/stat.h>
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -5,9 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
-
-#include <sys/stat.h>
 
 #define MAXNAME_LEN 255      /* path name must be no longer than this */
 #define MAX_CHILDS  256      /* nodes max children nodes */
@@ -29,7 +30,14 @@ void 	free_tree(struct node *n);
 static int 	cmpnodes(const void *a, const void *b);
 void 	 sort_childrens(struct node *n);
 
-void print_node(struct node *n);
+void 	print_node(struct node *n);
+
+void 	disable_raw_mode(void);
+void 	enable_raw_mode(void);
+void 	init_tui(struct node *n);
+
+struct termios orig_termios;
+
 
 int main(int argc, char *argv[]) 
 {
@@ -84,9 +92,9 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-//	struct node *cur_node = root;
-
-	print_node(root);
+	
+	//print_node(root);
+	init_tui(root);
 	
 
 	free_tree(root);
@@ -101,6 +109,8 @@ void usage(void)
 }
 
 
+/* --- Nodes functions --- */
+
 int walk_dir(struct node *n) 
 {
 	DIR* dirp;
@@ -113,8 +123,8 @@ int walk_dir(struct node *n)
 	}
 
 	while ((r = readdir(dirp)) != NULL) {
-		if ((strcmp(r->d_name, ".") == 0) || (strcmp(r->d_name, "..") == 0)) continue;
-		if ((r->d_type != DT_DIR) && (r->d_type != DT_REG)) continue;
+		if (r->d_name[0] == '.') continue;
+		if (r->d_type != DT_REG && r->d_type != DT_DIR) continue;
 
 		struct node *child = new_node(r->d_type, r->d_name, n);
 		if (child == NULL) {
@@ -136,7 +146,6 @@ int walk_dir(struct node *n)
 
 	return 0;
 }
-
 
 int join_path(char *dst, char *basename, char *filename, int d_type)
 {
@@ -222,4 +231,44 @@ void sort_childrens(struct node *n)
 {
 	size_t nmemb = (size_t)n->n_children;
 	qsort(n->children, nmemb, sizeof(struct node *), cmpnodes);
+}
+
+
+/* --- TUI functions --- */
+void disable_raw_mode(void)
+{
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+}
+
+void enable_raw_mode(void) 
+{
+	struct termios raw;
+
+	// TODO: set errors for these
+
+	tcgetattr(STDIN_FILENO, &orig_termios);
+	// TODO: don't use atexit, is weird.
+	atexit(disable_raw_mode);
+
+	raw = orig_termios;
+	raw.c_lflag &= (tcflag_t)~(ECHO | ICANON);
+
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+void init_tui(struct node *n)
+{
+	printf("is here: %s\n", n->path);
+//	struct node *cur_node = root;
+	enable_raw_mode();
+
+	char c;
+	while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
+		if (iscntrl(c)) {
+			printf("%d\n", c);
+		} else {
+			printf("%d (%c)\n", c, c);
+		}
+	}
+
 }
