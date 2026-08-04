@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,22 +20,20 @@ struct node {
 	int n_children;
 };
 
-enum { OK = 0, ERR_BAD_CMD = -1 };
-
 void 	usage(void);
-void 	walk_dir(struct node *n); 
-void 	join_path(char *dst, char *basename, char *filename, int d_type);
+int 	walk_dir(struct node *n); 
+int 	join_path(char *dst, char *basename, char *filename, int d_type);
 struct node * 	new_node(int d_type, char *filename, struct node *parent);
 void 	free_tree(struct node *n);
 
-static int cmpnodes(const void *a, const void *b);
-void sort_childrens(struct node *n);
+static int 	cmpnodes(const void *a, const void *b);
+void 	 sort_childrens(struct node *n);
 
 void print_node(struct node *n);
 
-
 int main(int argc, char *argv[]) 
 {
+	errno = 0;
 	int ch;
 	char *dir = NULL;
 
@@ -59,9 +58,12 @@ int main(int argc, char *argv[])
 
 	/* check dir is a directory */
 	struct stat sb;
-	stat(dir, &sb);
+	if (stat(dir, &sb) == -1) {
+		perror("stat");
+		return -1;
+	}
 	if (!S_ISDIR(sb.st_mode)) {
-		fprintf(stderr, "Erorr: %s is not a directory\n", dir);
+		fprintf(stderr, "Error: %s is not a directory\n", dir);
 		return 1;
 	}
 
@@ -71,7 +73,16 @@ int main(int argc, char *argv[])
 		dir[len - 1] = '\0';
 
 	struct node *root = new_node(DT_DIR, dir, NULL);
-	walk_dir(root);
+	if (root == NULL) {
+		fprintf(stderr, "Error: root node is NULL\n");
+		return -1;
+	}
+
+	if (walk_dir(root) != 0) {
+		fprintf(stderr, "Error: cannot walk on root\n");
+		free_tree(root);
+		return -1;
+	}
 
 //	struct node *cur_node = root;
 
@@ -90,7 +101,7 @@ void usage(void)
 }
 
 
-void walk_dir(struct node *n) 
+int walk_dir(struct node *n) 
 {
 	DIR* dirp;
 	struct dirent *r;
@@ -98,44 +109,60 @@ void walk_dir(struct node *n)
 	dirp = opendir(n->path);
 	if (dirp == NULL) {
 		fprintf(stderr, "Error: %s directory cannot be open\n", n->path);
-		return;
+		return -1;
 	}
 
 	while ((r = readdir(dirp)) != NULL) {
 		if ((strcmp(r->d_name, ".") == 0) || (strcmp(r->d_name, "..") == 0)) continue;
 		if ((r->d_type != DT_DIR) && (r->d_type != DT_REG)) continue;
 
-		/* create node. add to parent */
 		struct node *child = new_node(r->d_type, r->d_name, n);
+		if (child == NULL) {
+			fprintf(stderr, "Error walk_dir(): NULL new_node\n");
+			return -1;
+		}
 		n->children[n->n_children++] = child;
 
-		if (child->type == DT_DIR) {
-			walk_dir(child);
-		} 
+		if (child->type == DT_DIR && walk_dir(child) != 0) 
+			return -1;
 	}
 
 	sort_childrens(n);
+	
+	if (closedir(dirp) != 0) {
+		perror("walk_dir()");
+		return -1;
+	}
 
-	closedir(dirp);
+	return 0;
 }
 
 
-void join_path(char *dst, char *basename, char *filename, int d_type)
+int join_path(char *dst, char *basename, char *filename, int d_type)
 {
 	memset(dst, '\0', MAXNAME_LEN + 1);
 	char *end = (d_type == DT_DIR ? "/" : "");
-	snprintf(dst, MAXNAME_LEN, "%s%s%s", basename, filename, end); 
+	if (snprintf(dst, MAXNAME_LEN, "%s%s%s", basename, filename, end) < 0) {
+		fprintf(stderr, "Error in join_path(); snprintf\n"); 
+		return -1;
+	}
 	dst[MAXNAME_LEN] = '\0';
+	return 0;
 }
 
 struct node *new_node(int d_type, char *filename, struct node *parent) 
 {
 	struct node *n = (struct node *) malloc(sizeof(struct node));
+	if (n == NULL) {
+		perror("new_node malloc");
+		return NULL;
+	}
 
 	n->type = d_type;
 	
 	char *basename = (parent == NULL ? "" : parent->path);
-	join_path(n->path, basename, filename, d_type);
+	if (join_path(n->path, basename, filename, d_type) < 0)
+		return NULL;
 
 	n->parent = parent;
 
@@ -152,18 +179,13 @@ void free_tree(struct node *n)
 		if (n->children[i]->type == DT_DIR) {
 			free_tree(n->children[i]);
 		}
-		free(n->children[i]);
+
+		if (n->children[i] != NULL)
+			free(n->children[i]);
 	}
 
 	if (n->parent == NULL) 
 		free(n);
-}
-
-void print_help(void)
-{
-	// TODO! //
-	puts("megatron");
-	puts("\t your buddy");
 }
 
 void print_node(struct node *n)
