@@ -15,6 +15,7 @@
 #define MAX_CHILDS  256      /* nodes max children nodes */
 
 enum cursor_direction { UP, DOWN };
+enum { HEADER_ROW = 1, LIST_ROW = 2 };
 
 struct node {
 	int type;
@@ -381,7 +382,7 @@ open_node(void)
 	stt.node = stt.node->children[stt.index];
 
 	stt.index = 0;
-	stt.row = 2;
+	stt.row = LIST_ROW;
 	stt.last_row = 0;
 }
 
@@ -393,7 +394,7 @@ close_node(void)
 
 	stt.node = stt.node->parent;
 	stt.index = stt.index_stack[--stt.depth];
-	stt.row = stt.index + 2;
+	stt.row = stt.index + LIST_ROW;
 }
 
 void
@@ -410,7 +411,7 @@ print_bold(const char *s)
 }
 
 void
-print_underscore(const char *s)
+print_fill(const char *s)
 {
 	size_t len;
 	char buf[MAXNAME_LEN + 1];
@@ -440,12 +441,12 @@ print_node(void)
 
 	printf(" === %s ===\r\n", stt.node->path);
 
-	printrow = 2;    
+	printrow = LIST_ROW;    
 	set_cursor_at(printrow, 1);
 	for (i = 0; i < stt.node->n_children; i++) {
 
 		if (i == stt.index) {
-			print_underscore(stt.node->children[i]->filename);
+			print_fill(stt.node->children[i]->filename);
 		} else if (stt.node->children[i]->type == DT_DIR) {
 			print_bold(stt.node->children[i]->filename);
 		} else {
@@ -461,10 +462,10 @@ print_node(void)
 int
 tui(struct node *root)
 {
-	char ch;
+	char ch = 0;
 
 	/* init state */
-	stt.row = 2;		/* start at 2. 1 is the header with node path */
+	stt.row = LIST_ROW;		/* start at 2. 1 is the header with node path */
 	stt.index = 0;
 	stt.last_row = 0;
 	memset(stt.index_stack, -1, sizeof(int) * 16);
@@ -502,7 +503,7 @@ tui(struct node *root)
 
 	}
 
-	set_cursor_at(stt.last_row + 2, 1);  
+	set_cursor_at(stt.last_row + LIST_ROW, 1);  
 	if (end_screen() == -1) return -1;
 
 	return 0;
