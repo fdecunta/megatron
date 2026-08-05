@@ -449,11 +449,10 @@ print_header(const char *s)
 		return;
 	}
 
-	/* TODO: don't know if this works properly */
 	len = strlen(header);
 	if ((int)len >= screencols) {
-		int i = 4;
-		while (i-- > 1) 
+		int i;
+		for (i = 4; i > 1; i--)
 			header[screencols - i] = '.';
 		header[screencols - 1] = '\0';
 
@@ -485,6 +484,13 @@ print_node(void)
 		if (s == NULL) {
 			perror("strdup");
 			return;
+		}
+
+		if ((int)strlen(s) > screencols) {
+			int j;
+			for (j = 4; j > 1; j--)
+				s[screencols - j] = '.';
+			s[screencols - 1] = '\0';
 		}
 
 		if (i == stt.index && stt.node->children[i]->type == DT_DIR) {
