@@ -22,6 +22,8 @@ struct node {
 	int n_children;
 };
 
+struct termios old_settings, new_settings;
+
 struct TUI {
 	int rows;
 	int cols;
@@ -40,10 +42,11 @@ void 	 sort_childrens(struct node *n);
 
 void 	print_node(struct node *n);
 
-int 	disable_raw_mode(void);
-int 	enable_raw_mode(void);
+int 	init_screen(void);
+int 	end_screen(void);
 int 	init_tui(struct node *n);
 int 	clear_screen(void);
+
 
 struct TUI t;
 
@@ -244,40 +247,46 @@ void sort_childrens(struct node *n)
 
 
 /* --- TUI functions --- */
-int disable_raw_mode(void)
+
+int init_screen(void) 
 {
-	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &t.orig_termios) == -1) {
-		perror("disable_raw_mode(); tcsetattr();");
+	if (tcgetattr(STDIN_FILENO, &old_settings) != -1) {
+		new_settings = old_settings;
+		/* turn off ICANON and  echo */
+		new_settings.c_lflag &= (tcflag_t)~(ICANON | ECHO);
+
+		/* *TODO*: need to remove output processecing? */
+		new_settings.c_oflag &= (tcflag_t)~(OPOST);
+
+		if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &new_settings) == -1) {
+			perror("tcsetattr in init_screen()");
+			return -1;
+		}
+	} else {
+		perror("enable_raw_mode(); tcgetattr()");
 		return -1;
 	}
 	return 0;
 }
 
-int enable_raw_mode(void) 
+int end_screen(void)
 {
-	struct termios raw;
-
-	if (tcgetattr(STDIN_FILENO, &t.orig_termios) == -1) {
-		perror("enable_raw_mode(); tcgetattr();");
+	/* TODO: line 180 from screen.c in top from OpenBSD:
+	   they use TCSADRAIN. Don't know if should use that */
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &old_settings) == -1) {
+		perror("tcsetattr in end_screen()");
 		return -1;
 	}
-
-	raw = t.orig_termios;
-	raw.c_lflag &= (tcflag_t)~(ECHO | ICANON);
-	raw.c_oflag &= (tcflag_t)~(OPOST);
-
-	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
-		perror("enable_raw_mode(); tcsetattr();");
-		return -1;
-	}
-
 	return 0;
 }
 
 int clear_screen(void)
 {
-	write(STDIN_FILENO, "\x1b[2J", 4);
-	write(STDOUT_FILENO, "\x1b[H", 3);
+	write(STDIN_FILENO, "\x1b[0J", 4);    /* clear screen from line to bottom */
+
+	write(STDOUT_FILENO, "\x1b[E", 3);
+	write(STDOUT_FILENO, "\x1b[E", 3);
+
 	return 0;
 }
 
@@ -306,7 +315,7 @@ int init_tui(struct node *root)
 	}
 
 	if (clear_screen() == -1) return -1;
-	if (enable_raw_mode() == -1) return -1;
+	if (init_screen() == -1) return -1;
 
 	printf("Rows: %d\r\n", t.rows);
 	printf("Cols: %d\r\n", t.cols);
@@ -318,9 +327,10 @@ int init_tui(struct node *root)
 		} else {
 			printf("%d (%c)\r\n", c, c);
 		}
+
 	}
 
-	if (disable_raw_mode() == -1) return -1;
+	if (end_screen() == -1) return -1;
 
 	return 0;
 }
