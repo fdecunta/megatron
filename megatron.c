@@ -24,10 +24,9 @@ struct node {
 
 struct termios old_settings, new_settings;
 
-struct TUI {
+struct screen {
 	int rows;
 	int cols;
-	struct termios orig_termios;
 };
 
 
@@ -48,10 +47,11 @@ int 	init_tui(struct node *n);
 int 	clear_screen(void);
 
 
-struct TUI t;
+struct screen scr;
 
 
-int main(int argc, char *argv[]) 
+int
+main(int argc, char *argv[]) 
 {
 	errno = 0;
 	int ch;
@@ -114,7 +114,8 @@ int main(int argc, char *argv[])
 }
 
 
-void usage(void) 
+void 
+usage(void) 
 {
 	puts("usage: megatron [-d dir]");
 	return;
@@ -123,7 +124,8 @@ void usage(void)
 
 /* --- Nodes functions --- */
 
-int walk_dir(struct node *n) 
+int
+walk_dir(struct node *n) 
 {
 	DIR* dirp;
 	struct dirent *r;
@@ -159,7 +161,8 @@ int walk_dir(struct node *n)
 	return 0;
 }
 
-int join_path(char *dst, char *basename, char *filename, int d_type)
+int
+join_path(char *dst, char *basename, char *filename, int d_type)
 {
 	memset(dst, '\0', MAXNAME_LEN + 1);
 	char *end = (d_type == DT_DIR ? "/" : "");
@@ -171,7 +174,8 @@ int join_path(char *dst, char *basename, char *filename, int d_type)
 	return 0;
 }
 
-struct node *new_node(int d_type, char *filename, struct node *parent) 
+struct node *
+new_node(int d_type, char *filename, struct node *parent) 
 {
 	struct node *n = (struct node *) malloc(sizeof(struct node));
 	if (n == NULL) {
@@ -194,7 +198,8 @@ struct node *new_node(int d_type, char *filename, struct node *parent)
 	return n;
 }
 
-void free_tree(struct node *n)
+void
+free_tree(struct node *n)
 {
 	for (int i=0; i < n->n_children; i++) {
 		if (n->children[i]->type == DT_DIR) {
@@ -209,7 +214,8 @@ void free_tree(struct node *n)
 		free(n);
 }
 
-void print_node(struct node *n)
+void
+print_node(struct node *n)
 {
 	printf("==> %s <==\n", n->path);
 	for (int i=0; i < n->n_children; i++) {
@@ -221,7 +227,8 @@ void print_node(struct node *n)
 	}
 }
 
-static int cmpnodes(const void *a, const void *b)
+static int 
+cmpnodes(const void *a, const void *b)
 {
 	/* The dereferencing is a bit weird here. 
 	qsort(3) pass 'const void *' args to this function.
@@ -239,16 +246,18 @@ static int cmpnodes(const void *a, const void *b)
 	return strcmp(na->path, nb->path);
 }
 
-void sort_childrens(struct node *n)
+void
+sort_childrens(struct node *n)
 {
 	size_t nmemb = (size_t)n->n_children;
 	qsort(n->children, nmemb, sizeof(struct node *), cmpnodes);
 }
 
 
-/* --- TUI functions --- */
+/* --- tui functions --- */
 
-int init_screen(void) 
+int
+init_screen(void) 
 {
 	if (tcgetattr(STDIN_FILENO, &old_settings) != -1) {
 		new_settings = old_settings;
@@ -269,7 +278,8 @@ int init_screen(void)
 	return 0;
 }
 
-int end_screen(void)
+int
+end_screen(void)
 {
 	/* TODO: line 180 from screen.c in top from OpenBSD:
 	   they use TCSADRAIN. Don't know if should use that */
@@ -280,7 +290,8 @@ int end_screen(void)
 	return 0;
 }
 
-int clear_screen(void)
+int
+clear_screen(void)
 {
 	write(STDIN_FILENO, "\x1b[0J", 4);    /* clear screen from line to bottom */
 
@@ -290,7 +301,8 @@ int clear_screen(void)
 	return 0;
 }
 
-int get_window_size(int *rows, int *cols)
+int
+get_window_size(int *rows, int *cols)
 {
 	struct winsize ws;
 
@@ -303,13 +315,14 @@ int get_window_size(int *rows, int *cols)
 	return 0;
 }
 
-int init_tui(struct node *root)
+int
+init_tui(struct node *root)
 {
 	struct node *cur_node = root;
 	puts(cur_node->path);
 
-	if (get_window_size(&t.rows, &t.cols) == -1) return -1;
-	if (t.rows < 20 || t.cols < 50) {
+	if (get_window_size(&scr.rows, &scr.cols) == -1) return -1;
+	if (scr.rows < 20 || scr.cols < 50) {
 		fprintf(stderr, "Error: terminal is too small. Can't use megatron in a shit like this!\n");
 		return -1;
 	}
@@ -317,8 +330,8 @@ int init_tui(struct node *root)
 	if (clear_screen() == -1) return -1;
 	if (init_screen() == -1) return -1;
 
-	printf("Rows: %d\r\n", t.rows);
-	printf("Cols: %d\r\n", t.cols);
+	printf("Rows: %d\r\n", scr.rows);
+	printf("Cols: %d\r\n", scr.cols);
 
 	char c;
 	while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
