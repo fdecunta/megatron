@@ -15,7 +15,7 @@
 #define MAX_CHILDS  256      /* nodes max children nodes */
 
 enum cursor_direction { UP, DOWN };
-enum { HEADER_ROW = 1, LIST_ROW = 2 };
+enum { HEADER_ROW = 1, LIST_ROW = 3};
 
 struct node {
 	int type;
@@ -59,9 +59,6 @@ int 	get_cursor_position(int *rows, int *cols);
 void 	set_cursor_at(int row, int col);
 void 	open_node(void);
 void	close_node(void);
-
-void show_cursor(void); 
-void hide_cursor(void); 
 
 struct state stt; 
 
@@ -269,7 +266,6 @@ init_screen(void)
 		/* turn off ICANON and  echo */
 		new_settings.c_lflag &= (tcflag_t)~(ICANON | ECHO);
 
-		/* *TODO*: need to remove output processecing? */
 		new_settings.c_oflag &= (tcflag_t)~(OPOST);
 
 		if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &new_settings) == -1) {
@@ -277,7 +273,6 @@ init_screen(void)
 			return -1;
 		}
 
-		hide_cursor();
 	} else {
 		perror("enable_raw_mode(); tcgetattr()");
 		return -1;
@@ -294,7 +289,6 @@ end_screen(void)
 		perror("tcsetattr in end_screen()");
 		return -1;
 	}
-	show_cursor();
 	return 0;
 }
 
@@ -411,13 +405,26 @@ print_bold(const char *s)
 }
 
 void
-print_fill(const char *s)
+print_underline(const char *s)
 {
 	size_t len;
 	char buf[MAXNAME_LEN + 1];
 	memset(buf, '\0', MAXNAME_LEN + 1);
 
-	snprintf(buf, MAXNAME_LEN, "\x1b[7m%s\x1b[0m", s);
+	snprintf(buf, MAXNAME_LEN, "\x1b[4m%s\x1b[0m", s);
+	len = (size_t)strlen(buf);
+
+	write(STDOUT_FILENO, buf, len);
+}
+
+void
+print_underlinebold(const char *s)
+{
+	size_t len;
+	char buf[MAXNAME_LEN + 1];
+	memset(buf, '\0', MAXNAME_LEN + 1);
+
+	snprintf(buf, MAXNAME_LEN, "\x1b[1m\x1b[4m%s\x1b[0m", s);
 	len = (size_t)strlen(buf);
 
 	write(STDOUT_FILENO, buf, len);
@@ -432,6 +439,31 @@ print_normal(const char *s)
 }
 
 void
+print_header(const char *s)
+{
+	size_t len;
+	char *header;
+
+	if ((header = strdup(s)) == NULL) {
+		perror("strdup");
+		return;
+	}
+
+	len = strlen(header);
+	if ((int)len >= screencols) {
+		int i = 4;
+		while (i-- > 1) 
+			header[screencols - i] = '.';
+		header[screencols - 1] = '\0';
+
+		len = strlen(header);
+	}
+	
+	set_cursor_at(HEADER_ROW, 1);
+	write(STDOUT_FILENO, header, len);
+}
+
+void
 print_node(void)
 {
 	int i, printrow;
@@ -439,18 +471,20 @@ print_node(void)
 	set_cursor_at(1, 1);
 	clear_screen();
 
-	printf(" === %s ===\r\n", stt.node->path);
+	print_header(stt.node->path);
 
+	set_cursor_at(LIST_ROW, 1);
 	printrow = LIST_ROW;    
-	set_cursor_at(printrow, 1);
 	for (i = 0; i < stt.node->n_children; i++) {
-
-		if (i == stt.index) {
-			print_fill(stt.node->children[i]->filename);
+		char *s = stt.node->children[i]->filename;
+		if (i == stt.index && stt.node->children[i]->type == DT_DIR) {
+			print_underlinebold(s);
+		} else if (i == stt.index) {
+			print_underline(s);
 		} else if (stt.node->children[i]->type == DT_DIR) {
-			print_bold(stt.node->children[i]->filename);
+			print_bold(s);
 		} else {
-			print_normal(stt.node->children[i]->filename);
+			print_normal(s);
 		}
 		set_cursor_at(++printrow, 1);
 	}
@@ -462,10 +496,21 @@ print_node(void)
 void
 play(void)
 {
-	set_cursor_at(stt.last_row + 1, 1);
-	printf("ENTER\r\n");
+	struct node *sel = stt.node->children[stt.index];
+	if (sel->type != DT_REG)
+		return;
+	
+	pid_t pid = fork();
 
-	return;
+	if (pid == -1) {
+		perror("fork failed");
+		return;
+	} 
+	else if (pid == 0) {
+		execlp("vlc", "vlc", "--play-and-exit", sel->path, (char *)NULL);
+	} else {
+		;
+	}
 }
 
 int
