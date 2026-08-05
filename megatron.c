@@ -459,6 +459,15 @@ print_node(void)
 	set_cursor_at(stt.row, 1);  
 }
 
+void
+play(void)
+{
+	set_cursor_at(stt.last_row + 1, 1);
+	printf("ENTER\r\n");
+
+	return;
+}
+
 int
 tui(struct node *root)
 {
@@ -486,6 +495,7 @@ tui(struct node *root)
 		print_node();
 
 		read(STDIN_FILENO, &ch, 1);
+
 		switch (ch) {
 			case 'j':
 				mv_cursor(DOWN);
@@ -498,6 +508,9 @@ tui(struct node *root)
 				break;
 			case 'h':
 				close_node();
+				break;
+			case 'p':
+				play();
 				break;
 		}
 
