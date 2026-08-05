@@ -14,6 +14,8 @@
 #define MAXNAME_LEN 255      /* path name must be no longer than this */
 #define MAX_CHILDS  256      /* nodes max children nodes */
 
+enum cursor_direction { UP, DOWN };
+
 struct node {
 	int type;
 	char path[MAXNAME_LEN + 1];
@@ -24,9 +26,16 @@ struct node {
 
 struct termios old_settings, new_settings;
 
-struct screen {
-	int rows;
-	int cols;
+int screenrows, screencols;
+
+struct state {
+	char *buffer;
+	int row;
+	int index;
+	int last_row;
+	int index_stack[16];
+	int depth;
+	struct node *node;
 };
 
 
@@ -39,16 +48,18 @@ void 	free_tree(struct node *n);
 static int 	cmpnodes(const void *a, const void *b);
 void 	 sort_childrens(struct node *n);
 
-void 	print_node(struct node *n);
-
+int 	get_window_size(void);
 int 	init_screen(void);
 int 	end_screen(void);
-int 	init_tui(struct node *n);
 int 	clear_screen(void);
+int 	refresh_screen(void);
+int 	tui(struct node *n);
+int 	get_cursor_position(int *rows, int *cols);
+void 	set_cursor_at(int row, int col);
+void 	open_node(void);
+void	close_node(void);
 
-
-struct screen scr;
-
+struct state stt; 
 
 int
 main(int argc, char *argv[]) 
@@ -106,7 +117,7 @@ main(int argc, char *argv[])
 
 	
 	//print_node(root);
-	init_tui(root);
+	tui(root);
 	
 
 	free_tree(root);
@@ -214,19 +225,6 @@ free_tree(struct node *n)
 		free(n);
 }
 
-void
-print_node(struct node *n)
-{
-	printf("==> %s <==\n", n->path);
-	for (int i=0; i < n->n_children; i++) {
-		if (n->children[i]->type == DT_DIR) {
-			print_node(n->children[i]);
-		} else {
-			puts(n->children[i]->path);
-		}
-	}
-}
-
 static int 
 cmpnodes(const void *a, const void *b)
 {
@@ -293,36 +291,120 @@ end_screen(void)
 int
 clear_screen(void)
 {
-	write(STDIN_FILENO, "\x1b[0J", 4);    /* clear screen from line to bottom */
-
-	write(STDOUT_FILENO, "\x1b[E", 3);
-	write(STDOUT_FILENO, "\x1b[E", 3);
-
+	write(STDOUT_FILENO, "\x1b[2J", 4);    /* clear all screen */
 	return 0;
 }
 
 int
-get_window_size(int *rows, int *cols)
+get_window_size(void)
 {
 	struct winsize ws;
 
 	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
 		return -1;
 	} else {
-		*cols = ws.ws_col;
-		*rows = ws.ws_row;
+		screencols = ws.ws_col;
+		screenrows = ws.ws_row;
 	}
 	return 0;
 }
 
-int
-init_tui(struct node *root)
+int 
+get_cursor_position(int *rows, int *cols)
 {
-	struct node *cur_node = root;
-	puts(cur_node->path);
+	char buf[32];
+	unsigned int i = 0;
 
-	if (get_window_size(&scr.rows, &scr.cols) == -1) return -1;
-	if (scr.rows < 20 || scr.cols < 50) {
+	if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
+
+	while (i < sizeof(buf) - 1) {
+		if (read(STDIN_FILENO, &buf[i], 1) != 1) break;
+		if (buf[i] == 'R') break;
+		i++;
+	}
+	buf[i] = '\0';
+
+	if (buf[0] != '\x1b' || buf[1] != '[') return -1;
+	if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
+
+	return 0;
+}
+
+void set_cursor_at(int row, int col)
+{	
+	size_t len;
+	char buf[16];
+	len = (size_t)snprintf(buf, 16, "\x1b[%d;%dH", row, col);
+	write(STDOUT_FILENO, buf, len);
+}
+
+void mv_cursor(int d)
+{
+	if (d == UP && stt.row != 1 && stt.index != 0) {
+		stt.row -= 1;
+		stt.index -= 1;
+	} 
+
+	if (d == DOWN && (stt.row + 1 < screenrows) && (stt.index + 1 < stt.node->n_children)) {
+		stt.row += 1;
+		stt.index += 1;
+	}
+	set_cursor_at(stt.row, 0);
+}
+
+void
+open_node(void) 
+{
+	struct node *t = stt.node->children[stt.index];
+	printf("\r\n\r\n%s\r\n", t->path);
+}
+
+void
+close_node(void)
+{
+	return;
+}
+
+void
+print_node(void)
+{
+	int i;
+
+	set_cursor_at(1, 1);
+	clear_screen();
+
+	printf(" === %s ===\r\n", stt.node->path);
+
+	set_cursor_at(2, 1);
+	for (i = 0; i < stt.node->n_children; i++) {
+		if (i == stt.index) {
+			printf("\x1b[1m%s\x1b[0m\r\n", stt.node->children[i]->path);
+		} else {
+			printf("%s\r\n", stt.node->children[i]->path);
+		}
+	}
+
+	stt.last_row = i + 1;
+	set_cursor_at(stt.row, 1);  
+}
+
+int
+tui(struct node *root)
+{
+	char ch;
+
+	/* init state */
+	stt.buffer = NULL;
+	stt.row = 2;		/* start at 2. 1 is the header with node path */
+	stt.index = 0;
+	stt.last_row = 0;
+	memset(stt.index_stack, -1, sizeof(int) * 16);
+	stt.depth = 0;
+	stt.node = root;
+
+	/* init screen */
+	if (get_window_size() == -1) return -1;
+	if (screenrows < 20 || screencols < 50) {
 		fprintf(stderr, "Error: terminal is too small. Can't use megatron in a shit like this!\n");
 		return -1;
 	}
@@ -330,19 +412,28 @@ init_tui(struct node *root)
 	if (clear_screen() == -1) return -1;
 	if (init_screen() == -1) return -1;
 
-	printf("Rows: %d\r\n", scr.rows);
-	printf("Cols: %d\r\n", scr.cols);
+	while (ch != 'q') {
+		print_node();
 
-	char c;
-	while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
-		if (iscntrl(c)) {
-			printf("%d\r\n", c);
-		} else {
-			printf("%d (%c)\r\n", c, c);
+		read(STDIN_FILENO, &ch, 1);
+		switch (ch) {
+			case 'j':
+				mv_cursor(DOWN);
+				break;
+			case 'k':
+				mv_cursor(UP);
+				break;
+			case 'l':
+				open_node();
+				break;
+			case 'h':
+				close_node();
+				break;
 		}
 
 	}
 
+	set_cursor_at(stt.last_row + 2, 1);  
 	if (end_screen() == -1) return -1;
 
 	return 0;
