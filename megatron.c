@@ -449,6 +449,7 @@ print_header(const char *s)
 		return;
 	}
 
+	/* TODO: don't know if this works properly */
 	len = strlen(header);
 	if ((int)len >= screencols) {
 		int i = 4;
@@ -461,7 +462,11 @@ print_header(const char *s)
 	
 	set_cursor_at(HEADER_ROW, 1);
 	write(STDOUT_FILENO, header, len);
+
+	free(header);
+	return;
 }
+
 
 void
 print_node(void)
@@ -476,7 +481,12 @@ print_node(void)
 	set_cursor_at(LIST_ROW, 1);
 	printrow = LIST_ROW;    
 	for (i = 0; i < stt.node->n_children; i++) {
-		char *s = stt.node->children[i]->filename;
+		char *s = strdup(stt.node->children[i]->filename);
+		if (s == NULL) {
+			perror("strdup");
+			return;
+		}
+
 		if (i == stt.index && stt.node->children[i]->type == DT_DIR) {
 			print_underlinebold(s);
 		} else if (i == stt.index) {
@@ -486,7 +496,9 @@ print_node(void)
 		} else {
 			print_normal(s);
 		}
+
 		set_cursor_at(++printrow, 1);
+		free(s);
 	}
 
 	stt.last_row = i + 1;
