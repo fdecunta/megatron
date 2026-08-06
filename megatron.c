@@ -26,10 +26,6 @@ struct node {
 	int n_children;
 };
 
-struct termios old_settings, new_settings;
-
-int screenrows, screencols;
-
 struct state {
 	int row;
 	int index;
@@ -39,12 +35,27 @@ struct state {
 	struct node *node;
 };
 
+struct termios old_settings, new_settings;
+int screenrows, screencols;
+
+const char *video_ext[] = {
+	"mkv",
+	"mp4",
+	"avi",
+	"mpg",
+	"mpeg",
+	"mov",
+	"wmv",
+	NULL
+};  
+
 
 void 	usage(void);
 int 	walk_dir(struct node *n); 
 int 	join_path(char *dst, char *basename, char *filename, int d_type);
 struct node * 	new_node(int d_type, char *filename, struct node *parent);
 void 	free_tree(struct node *n);
+int 	is_video(const char *filename);
 
 static int 	cmpnodes(const void *a, const void *b);
 void 	 sort_childrens(struct node *n);
@@ -116,10 +127,7 @@ main(int argc, char *argv[])
 		return -1;
 	}
 
-	
-	//print_node(root);
 	tui(root);
-	
 
 	free_tree(root);
 	return 0;
@@ -150,8 +158,10 @@ walk_dir(struct node *n)
 
 	while ((r = readdir(dirp)) != NULL) {
 		if (r->d_name[0] == '.') continue;
-		if (r->d_type != DT_REG && r->d_type != DT_DIR) continue;
-
+		if (r->d_type != DT_DIR &&
+			r->d_type == DT_REG && 
+			is_video(r->d_name) == 0) continue;
+			
 		struct node *child = new_node(r->d_type, r->d_name, n);
 		if (child == NULL) {
 			fprintf(stderr, "Error walk_dir(): NULL new_node\n");
@@ -172,6 +182,22 @@ walk_dir(struct node *n)
 
 	return 0;
 }
+
+int
+is_video(const char *filename)
+{
+	size_t i = strlen(filename);
+	for (; filename[i] != '.'; i--)
+		;
+
+	for (int j = 0; video_ext[j] != NULL; j++) {
+		if (!strcmp(&filename[i + 1], video_ext[j]))
+			return 1;
+	}
+
+	return 0;
+}
+
 
 int
 join_path(char *dst, char *dirname, char *filename, int d_type)
@@ -466,7 +492,6 @@ print_header(const char *s)
 	return;
 }
 
-
 void
 print_node(void)
 {
@@ -479,6 +504,10 @@ print_node(void)
 
 	set_cursor_at(LIST_ROW, 1);
 	printrow = LIST_ROW;    
+
+	if (stt.node->n_children == 0) 
+		print_normal("Empty: no videos nor dirs");
+
 	for (i = 0; i < stt.node->n_children; i++) {
 		char *s = strdup(stt.node->children[i]->filename);
 		if (s == NULL) {
