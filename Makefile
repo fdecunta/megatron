@@ -4,14 +4,19 @@ FLAGS = -Wall -Wextra -Werror -Wconversion
 PROG = megatron
 SRC = megatron.c
 
+BIN = /usr/local/bin
+
 $(PROG): $(SRC)
 	$(CC) $(FLAGS) $(SRC) -o $(PROG)
 
 run: $(PROG)
 	./$(PROG) -d fake_filmoteca
 
-debug: $(SRC)
-	$(CC) -DDEBUG $(FLAGS) $(SRC) -o $(PROG)
+install: $(PROG)
+	cp $(PROG) $(BIN)
+
+remove:
+	rm -f $(BIN)/$(PROG)
 
 clean: 
 	rm -f $(PROG)

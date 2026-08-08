@@ -310,7 +310,7 @@ init_screen(void)
 int
 end_screen(void)
 {
-	/* TODO: line 180 from screen.c in top from OpenBSD:
+	/* TODO: line 180 from screen.c in _top_ from OpenBSD:
 	   they use TCSADRAIN. Don't know if should use that */
 	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &old_settings) == -1) {
 		perror("tcsetattr in end_screen()");
@@ -634,6 +634,7 @@ tui(struct node *root)
 	}
 
 	set_cursor_at(LIST_ROW + stt.node->n_children - stt.index_top_slice, 1);
+	write(STDOUT_FILENO, "\x1b[0K", 4);    /* clear line */
 	if (end_screen() == -1) return -1;
 
 	return 0;
