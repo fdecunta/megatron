@@ -22,6 +22,6 @@ clean:
 	rm -f $(PROG)
 
 mem: $(PROG)
-	valgrind --leak-check=full ./$(PROG) -d fake_filmoteca
+	valgrind --leak-check=full ./$(PROG) fake_filmoteca
 
 .PHONY: run clean mem debug

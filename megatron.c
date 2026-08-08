@@ -79,12 +79,8 @@ main(int argc, char *argv[])
 	int ch;
 	char *dir = NULL;
 
-	while ((ch = getopt(argc, argv, "d:")) != -1) {
+	while ((ch = getopt(argc, argv, "")) != -1) {
 		switch (ch) {
-		case 'd':
-			dir = optarg;;
-			break;
-		case '?':
 		default:
 			usage();
 		}
@@ -93,9 +89,11 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (dir == NULL) {
+	if (argc == 0) {
 		usage();
 		return 1;
+	} else {
+		dir = *argv;
 	}
 
 	/* check dir is a directory */
@@ -136,7 +134,7 @@ main(int argc, char *argv[])
 void 
 usage(void) 
 {
-	puts("usage: megatron [-d dir]");
+	puts("usage: megatron [dir]");
 	return;
 }
 
