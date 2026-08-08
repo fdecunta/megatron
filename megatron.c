@@ -30,13 +30,13 @@ struct state {
 	int highlight_row;
 	int index;
 	int index_top_slice;
-	int index_stack[16];
-	int depth;
 	struct node *node;
 };
 
-struct termios old_settings, new_settings;
-int screenrows, screencols;
+struct stack {
+	int depth;
+	struct state state[16];
+};
 
 const char *video_ext[] = {
 	"mkv",
@@ -49,29 +49,30 @@ const char *video_ext[] = {
 	NULL
 };  
 
-
-void 	usage(void);
-int 	walk_dir(struct node *n); 
-int 	join_path(char *dst, char *basename, char *filename, int d_type);
+void 		usage(void);
+int 		walk_dir(struct node *n); 
+int 		join_path(char *dst, char *basename, char *filename, int d_type);
 struct node * 	new_node(int d_type, char *filename, struct node *parent);
-void 	free_tree(struct node *n);
-int 	is_video(const char *filename);
-
+void 		free_tree(struct node *n);
+int 		is_video(const char *filename);
 static int 	cmpnodes(const void *a, const void *b);
-void 	 sort_childrens(struct node *n);
+void 		sort_childrens(struct node *n);
+int 		get_window_size(void);
+int 		init_screen(void);
+int 		end_screen(void);
+int 		clear_screen(void);
+int 		refresh_screen(void);
+int 		tui(struct node *n);
+int 		get_cursor_position(int *rows, int *cols);
+void 		set_cursor_at(int row, int col);
+void 		open_node(void);
+void		close_node(void);
 
-int 	get_window_size(void);
-int 	init_screen(void);
-int 	end_screen(void);
-int 	clear_screen(void);
-int 	refresh_screen(void);
-int 	tui(struct node *n);
-int 	get_cursor_position(int *rows, int *cols);
-void 	set_cursor_at(int row, int col);
-void 	open_node(void);
-void	close_node(void);
 
+struct termios old_settings, new_settings;
+int screenrows, screencols;
 struct state stt; 
+struct stack state_stack;
 
 int
 main(int argc, char *argv[]) 
@@ -370,13 +371,21 @@ void set_cursor_at(int row, int col)
 
 void mv_cursor(int d)
 {
-	if (d == UP && stt.highlight_row != 1 && stt.index != 0) {
-		stt.highlight_row -= 1;
+	if (d == UP && stt.index != 0) {
+		if (stt.highlight_row == LIST_ROW) {
+			stt.index_top_slice -= 1;
+		} else {
+			stt.highlight_row -= 1;
+		}
 		stt.index -= 1;
 	} 
 
-	if (d == DOWN && (stt.highlight_row + 1 < screenrows) && (stt.index + 1 < stt.node->n_children)) {
-		stt.highlight_row += 1;
+	if (d == DOWN && stt.index + 1 < stt.node->n_children) {
+		if (stt.highlight_row == screenrows) {
+			stt.index_top_slice += 1;
+		} else {
+			stt.highlight_row += 1;
+		}
 		stt.index += 1;
 	}
 	set_cursor_at(stt.highlight_row, 0);
@@ -395,12 +404,14 @@ hide_cursor(void) {
 void
 open_node(void) 
 {
-	if (stt.node->children[stt.index]->type != DT_DIR)
+	if (stt.node->n_children == 0 || stt.node->children[stt.index]->type != DT_DIR)
 		return;
 
-	stt.index_stack[stt.depth++] = stt.index;
-	stt.node = stt.node->children[stt.index];
+	/* put state in stack */
+	state_stack.state[state_stack.depth++] = stt;
 
+	/* start a clean state */
+	stt.node = stt.node->children[stt.index];
 	stt.index = stt.index_top_slice = 0;
 	stt.highlight_row = LIST_ROW;
 }
@@ -408,12 +419,8 @@ open_node(void)
 void
 close_node(void)
 {
-	if (stt.node->parent == NULL)    /* only root has NULL parent */
-		return;
-
-	stt.node = stt.node->parent;
-	stt.index = stt.index_stack[--stt.depth];
-	stt.highlight_row = stt.index + LIST_ROW;
+	if (stt.node->parent != NULL)    
+		stt = state_stack.state[--state_stack.depth];
 }
 
 void
@@ -494,23 +501,44 @@ print_header(const char *s)
 void
 print_node(void)
 {
-	int i, printrow;
-	
-
 	set_cursor_at(1, 1);
 	clear_screen();
 
 	print_header(stt.node->path);
 
+	/* prepare to print list of files */
+	int printed_row = LIST_ROW;    
 	set_cursor_at(LIST_ROW, 1);
-	printrow = LIST_ROW;    
 
 	if (stt.node->n_children == 0) 
 		print_normal("Empty: no videos nor dirs");
 
-	/* max printable rows: screenrows - LIST_ROW */
-
-	for (i = stt.index_top_slice;i < stt.node->n_children; i++) {
+	/* 
+	 * This loop prints the list of files and directories.
+	 *
+	 * It iterates over the children nodes from the current nude
+	 * and prints each one using a different style.
+	 * 
+	 * normal 		regular file
+	 * bold 		directories
+	 * underscore 		selected file 
+	 * bold and underscore 	selected dir
+	 * 
+	 * The iteration has two rules. 
+	 * 1. Stop when there are no more children nodes.
+	 * 2. Stop when screen has no empty rows. 
+	 * 
+	 * For long lists, scrolling is implemented by printing a slice
+	 * of the children nodes array. Note that 'i' is initialized as 
+	 * 'index_top_slice'.
+	 *
+	 * For long lists, the loop stops when all the printable rows
+	 * have been filled. 
+	 * This happens when the number of printed items (i - index_top_slice)
+	 * is equal to the number of printable rows (screenrows - LIST_ROW)
+	 */
+	
+	for (int i = stt.index_top_slice; i < stt.node->n_children && i - stt.index_top_slice <= screenrows - LIST_ROW; i++) {
 		char *s = strdup(stt.node->children[i]->filename);
 		if (s == NULL) {
 			perror("strdup");
@@ -534,10 +562,9 @@ print_node(void)
 			print_normal(s);
 		}
 
-		set_cursor_at(++printrow, 1);
+		set_cursor_at(++printed_row, 1);
 		free(s);
 	}
-
 	set_cursor_at(stt.highlight_row, 1);  
 }
 
@@ -566,11 +593,9 @@ tui(struct node *root)
 {
 	char ch = 0;
 
-	/* init state */
+	state_stack.depth = 0;
+
 	stt.highlight_row = LIST_ROW;
-	stt.index = stt.index_top_slice = 0;
-	memset(stt.index_stack, -1, sizeof(int) * 16);
-	stt.depth = 0;
 	stt.node = root;
 
 	/* init screen */
