@@ -50,24 +50,22 @@ const char *video_ext[] = {
 };  
 
 void 		usage(void);
-int 		walk_dir(struct node *n); 
+int 		node_build_tree(struct node *n); 
+struct node * 	node_create(int d_type, char *filename, struct node *parent);
+void 		node_free_tree(struct node *n);
+void 		node_sort_childrens(struct node *n);
 int 		join_path(char *dst, char *basename, char *filename, int d_type);
-struct node * 	new_node(int d_type, char *filename, struct node *parent);
-void 		free_tree(struct node *n);
 int 		is_video(const char *filename);
 static int 	cmpnodes(const void *a, const void *b);
-void 		sort_childrens(struct node *n);
-int 		get_window_size(void);
-int 		init_screen(void);
-int 		end_screen(void);
-int 		clear_screen(void);
-int 		refresh_screen(void);
+int 		screen_clear(void);
+int 		screen_end(void);
+int 		screen_get_winsize(void);
+int 		screen_init(void);
+void 		screen_set_cursor(int row, int col);
 int 		tui(struct node *n);
-int 		get_cursor_position(int *rows, int *cols);
-void 		set_cursor_at(int row, int col);
 void 		open_node(void);
 void		close_node(void);
-
+void		play(void);
 
 struct termios old_settings, new_settings;
 int screenrows, screencols;
@@ -116,21 +114,21 @@ main(int argc, char *argv[])
 	if (dir[len - 1] == '/') 
 		dir[len - 1] = '\0';
 
-	struct node *root = new_node(DT_DIR, dir, NULL);
+	struct node *root = node_create(DT_DIR, dir, NULL);
 	if (root == NULL) {
 		fprintf(stderr, "Error: root node is NULL\n");
 		return -1;
 	}
 
-	if (walk_dir(root) != 0) {
+	if (node_build_tree(root) != 0) {
 		fprintf(stderr, "Error: cannot walk on root\n");
-		free_tree(root);
+		node_free_tree(root);
 		return -1;
 	}
 
 	tui(root);
 
-	free_tree(root);
+	node_free_tree(root);
 	return 0;
 }
 
@@ -146,7 +144,7 @@ usage(void)
 /* --- Nodes functions --- */
 
 int
-walk_dir(struct node *n) 
+node_build_tree(struct node *n) 
 {
 	DIR* dirp;
 	struct dirent *r;
@@ -163,21 +161,21 @@ walk_dir(struct node *n)
 			r->d_type == DT_REG && 
 			is_video(r->d_name) == 0) continue;
 			
-		struct node *child = new_node(r->d_type, r->d_name, n);
+		struct node *child = node_create(r->d_type, r->d_name, n);
 		if (child == NULL) {
-			fprintf(stderr, "Error walk_dir(): NULL new_node\n");
+			fprintf(stderr, "Error node_build_tree: NULL node_create\n");
 			return -1;
 		}
 		n->children[n->n_children++] = child;
 
-		if (child->type == DT_DIR && walk_dir(child) != 0) 
+		if (child->type == DT_DIR && node_build_tree(child) != 0) 
 			return -1;
 	}
 
-	sort_childrens(n);
+	node_sort_childrens(n);
 	
 	if (closedir(dirp) != 0) {
-		perror("walk_dir()");
+		perror("node_build_tree");
 		return -1;
 	}
 
@@ -214,12 +212,12 @@ join_path(char *dst, char *dirname, char *filename, int d_type)
 }
 
 struct node *
-new_node(int d_type, char *filename, struct node *parent) 
+node_create(int d_type, char *filename, struct node *parent) 
 {
 
 	struct node *n = (struct node *) malloc(sizeof(struct node));
 	if (n == NULL) {
-		perror("new_node malloc");
+		perror("node_create malloc");
 		return NULL;
 	}
 
@@ -241,11 +239,11 @@ new_node(int d_type, char *filename, struct node *parent)
 }
 
 void
-free_tree(struct node *n)
+node_free_tree(struct node *n)
 {
 	for (int i=0; i < n->n_children; i++) {
 		if (n->children[i]->type == DT_DIR) {
-			free_tree(n->children[i]);
+			node_free_tree(n->children[i]);
 		}
 
 		if (n->children[i] != NULL)
@@ -276,7 +274,7 @@ cmpnodes(const void *a, const void *b)
 }
 
 void
-sort_childrens(struct node *n)
+node_sort_childrens(struct node *n)
 {
 	size_t nmemb = (size_t)n->n_children;
 	qsort(n->children, nmemb, sizeof(struct node *), cmpnodes);
@@ -286,7 +284,7 @@ sort_childrens(struct node *n)
 /* --- tui functions --- */
 
 int
-init_screen(void) 
+screen_init(void) 
 {
 	if (tcgetattr(STDIN_FILENO, &old_settings) != -1) {
 		new_settings = old_settings;
@@ -296,7 +294,7 @@ init_screen(void)
 		new_settings.c_oflag &= (tcflag_t)~(OPOST);
 
 		if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &new_settings) == -1) {
-			perror("tcsetattr in init_screen()");
+			perror("tcsetattr in screen_init()");
 			return -1;
 		}
 
@@ -308,26 +306,26 @@ init_screen(void)
 }
 
 int
-end_screen(void)
+screen_end(void)
 {
 	/* TODO: line 180 from screen.c in _top_ from OpenBSD:
 	   they use TCSADRAIN. Don't know if should use that */
 	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &old_settings) == -1) {
-		perror("tcsetattr in end_screen()");
+		perror("tcsetattr in screen_end()");
 		return -1;
 	}
 	return 0;
 }
 
 int
-clear_screen(void)
+screen_clear(void)
 {
 	write(STDOUT_FILENO, "\x1b[2J", 4);    /* clear all screen */
 	return 0;
 }
 
 int
-get_window_size(void)
+screen_get_winsize(void)
 {
 	struct winsize ws;
 
@@ -340,28 +338,7 @@ get_window_size(void)
 	return 0;
 }
 
-int 
-get_cursor_position(int *rows, int *cols)
-{
-	char buf[32];
-	unsigned int i = 0;
-
-	if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
-
-	while (i < sizeof(buf) - 1) {
-		if (read(STDIN_FILENO, &buf[i], 1) != 1) break;
-		if (buf[i] == 'R') break;
-		i++;
-	}
-	buf[i] = '\0';
-
-	if (buf[0] != '\x1b' || buf[1] != '[') return -1;
-	if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
-
-	return 0;
-}
-
-void set_cursor_at(int row, int col)
+void screen_set_cursor(int row, int col)
 {	
 	size_t len;
 	char buf[16];
@@ -388,7 +365,7 @@ void mv_cursor(int d)
 		}
 		stt.index += 1;
 	}
-	set_cursor_at(stt.highlight_row, 0);
+	screen_set_cursor(stt.highlight_row, 0);
 }
 
 void 
@@ -491,7 +468,7 @@ print_header(const char *s)
 		len = strlen(header);
 	}
 	
-	set_cursor_at(HEADER_ROW, 1);
+	screen_set_cursor(HEADER_ROW, 1);
 	write(STDOUT_FILENO, header, len);
 
 	free(header);
@@ -501,14 +478,14 @@ print_header(const char *s)
 void
 print_node(void)
 {
-	set_cursor_at(1, 1);
-	clear_screen();
+	screen_set_cursor(1, 1);
+	screen_clear();
 
 	print_header(stt.node->path);
 
 	/* prepare to print list of files */
 	int printed_row = LIST_ROW;    
-	set_cursor_at(LIST_ROW, 1);
+	screen_set_cursor(LIST_ROW, 1);
 
 	if (stt.node->n_children == 0) 
 		print_normal("Empty: no videos nor dirs");
@@ -562,10 +539,10 @@ print_node(void)
 			print_normal(s);
 		}
 
-		set_cursor_at(++printed_row, 1);
+		screen_set_cursor(++printed_row, 1);
 		free(s);
 	}
-	set_cursor_at(stt.highlight_row, 1);  
+	screen_set_cursor(stt.highlight_row, 1);  
 }
 
 void
@@ -599,14 +576,14 @@ tui(struct node *root)
 	stt.node = root;
 
 	/* init screen */
-	if (get_window_size() == -1) return -1;
+	if (screen_get_winsize() == -1) return -1;
 	if (screenrows < 20 || screencols < 50) {
 		fprintf(stderr, "Error: terminal is too small. Can't use megatron in a shit like this!\n");
 		return -1;
 	}
 
-	if (clear_screen() == -1) return -1;
-	if (init_screen() == -1) return -1;
+	if (screen_clear() == -1) return -1;
+	if (screen_init() == -1) return -1;
 
 	while (ch != 'q') {
 		print_node();
@@ -633,9 +610,9 @@ tui(struct node *root)
 
 	}
 
-	set_cursor_at(LIST_ROW + stt.node->n_children - stt.index_top_slice, 1);
+	screen_set_cursor(LIST_ROW + stt.node->n_children - stt.index_top_slice, 1);
 	write(STDOUT_FILENO, "\x1b[0K", 4);    /* clear line */
-	if (end_screen() == -1) return -1;
+	if (screen_end() == -1) return -1;
 
 	return 0;
 }
