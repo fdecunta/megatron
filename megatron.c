@@ -27,9 +27,9 @@ struct node {
 };
 
 struct state {
-	int row;
+	int highlight_row;
 	int index;
-	int last_row;
+	int index_top_slice;
 	int index_stack[16];
 	int depth;
 	struct node *node;
@@ -370,16 +370,16 @@ void set_cursor_at(int row, int col)
 
 void mv_cursor(int d)
 {
-	if (d == UP && stt.row != 1 && stt.index != 0) {
-		stt.row -= 1;
+	if (d == UP && stt.highlight_row != 1 && stt.index != 0) {
+		stt.highlight_row -= 1;
 		stt.index -= 1;
 	} 
 
-	if (d == DOWN && (stt.row + 1 < screenrows) && (stt.index + 1 < stt.node->n_children)) {
-		stt.row += 1;
+	if (d == DOWN && (stt.highlight_row + 1 < screenrows) && (stt.index + 1 < stt.node->n_children)) {
+		stt.highlight_row += 1;
 		stt.index += 1;
 	}
-	set_cursor_at(stt.row, 0);
+	set_cursor_at(stt.highlight_row, 0);
 }
 
 void 
@@ -401,9 +401,8 @@ open_node(void)
 	stt.index_stack[stt.depth++] = stt.index;
 	stt.node = stt.node->children[stt.index];
 
-	stt.index = 0;
-	stt.row = LIST_ROW;
-	stt.last_row = 0;
+	stt.index = stt.index_top_slice = 0;
+	stt.highlight_row = LIST_ROW;
 }
 
 void
@@ -414,7 +413,7 @@ close_node(void)
 
 	stt.node = stt.node->parent;
 	stt.index = stt.index_stack[--stt.depth];
-	stt.row = stt.index + LIST_ROW;
+	stt.highlight_row = stt.index + LIST_ROW;
 }
 
 void
@@ -496,6 +495,7 @@ void
 print_node(void)
 {
 	int i, printrow;
+	
 
 	set_cursor_at(1, 1);
 	clear_screen();
@@ -508,7 +508,9 @@ print_node(void)
 	if (stt.node->n_children == 0) 
 		print_normal("Empty: no videos nor dirs");
 
-	for (i = 0; i < stt.node->n_children; i++) {
+	/* max printable rows: screenrows - LIST_ROW */
+
+	for (i = stt.index_top_slice;i < stt.node->n_children; i++) {
 		char *s = strdup(stt.node->children[i]->filename);
 		if (s == NULL) {
 			perror("strdup");
@@ -536,8 +538,7 @@ print_node(void)
 		free(s);
 	}
 
-	stt.last_row = i + 1;
-	set_cursor_at(stt.row, 1);  
+	set_cursor_at(stt.highlight_row, 1);  
 }
 
 void
@@ -566,9 +567,8 @@ tui(struct node *root)
 	char ch = 0;
 
 	/* init state */
-	stt.row = LIST_ROW;		/* start at 2. 1 is the header with node path */
-	stt.index = 0;
-	stt.last_row = 0;
+	stt.highlight_row = LIST_ROW;
+	stt.index = stt.index_top_slice = 0;
 	memset(stt.index_stack, -1, sizeof(int) * 16);
 	stt.depth = 0;
 	stt.node = root;
@@ -608,7 +608,7 @@ tui(struct node *root)
 
 	}
 
-	set_cursor_at(stt.last_row + LIST_ROW, 1);  
+	set_cursor_at(LIST_ROW + stt.node->n_children - stt.index_top_slice, 1);
 	if (end_screen() == -1) return -1;
 
 	return 0;
