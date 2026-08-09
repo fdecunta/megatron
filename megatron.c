@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "config.h" 	/* load default dir and history file */
@@ -68,8 +69,9 @@ int 		tui(struct node *n);
 void 		open_node(void);
 void		close_node(void);
 void		play(void);
-int		assert_history_file(void);
-int		print_history(void);
+int		history_assert_file(void);
+int		history_print(void);
+int		history_write(const char *path);
 
 struct termios old_settings, new_settings;
 int screenrows, screencols;
@@ -83,14 +85,14 @@ main(int argc, char *argv[])
 	int ch;
 	char *dir = NULL;
 
-	if (assert_history_file() != 0)
+	if (history_assert_file() != 0)
 		return 1;
 
 	while ((ch = getopt(argc, argv, "h")) != -1) {
 		switch (ch) {
 		case 'h':
 			/* todo: add err handling */
-			print_history();
+			history_print();
 			return 0;
 		default:
 			usage();
@@ -557,6 +559,7 @@ play(void)
 	if (sel->type != DT_REG)
 		return;
 	
+	history_write(sel->path);
 	pid_t pid = fork();
 
 	if (pid == -1) {
@@ -625,7 +628,7 @@ tui(struct node *root)
 /* --- history functions --- */
 
 int
-assert_history_file(void)
+history_assert_file(void)
 {
 	struct stat sb;
 	if (stat(HISTORY_FILE, &sb) == -1 || !S_ISREG(sb.st_mode)) {
@@ -637,12 +640,39 @@ assert_history_file(void)
 }
 
 int
-print_history(void)
+history_print(void)
 {
 	FILE *fp = fopen(HISTORY_FILE, "r");
 	if (fp == NULL) {
 		perror("print_history");
 		return 1;
 	}
+
+	int ch;
+	while ((ch = fgetc(fp)) != EOF) 
+		putchar(ch);
+	
+	fclose(fp);
 	return 0;
+}
+
+int
+history_write(const char *path)
+{
+	FILE *fp = fopen(HISTORY_FILE, "a");
+	if (fp == NULL) {
+		perror("print_history");
+		return 1;
+	}
+	
+	time_t now = time(NULL);
+	struct tm *tm = localtime(&now);
+	char timestr[64];
+	strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tm);
+
+	fprintf(fp, "%s\t%s\n", timestr, path);
+
+	fclose(fp);
+	return 0;
+
 }
