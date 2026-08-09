@@ -12,7 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "config.h" 	/* load default dir and history file */
+#include "config.h" 	/* load DEFAUTL_DIR and HISTORY_FILE */
 
 #define MAXNAME_LEN 255      /* path name must be no longer than this */
 #define MAX_CHILDS  256      /* nodes max children nodes */
