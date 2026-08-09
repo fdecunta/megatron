@@ -78,6 +78,7 @@ int screenrows, screencols;
 struct state stt; 
 struct stack state_stack;
 
+
 int
 main(int argc, char *argv[]) 
 {
@@ -88,14 +89,15 @@ main(int argc, char *argv[])
 	if (history_assert_file() != 0)
 		return 1;
 
-	while ((ch = getopt(argc, argv, "h")) != -1) {
+	while ((ch = getopt(argc, argv, "H")) != -1) {
 		switch (ch) {
-		case 'h':
+		case 'H':
 			/* todo: add err handling */
 			history_print();
 			return 0;
 		default:
 			usage();
+			return 0;
 		}
 
 	}
@@ -143,8 +145,8 @@ main(int argc, char *argv[])
 void 
 usage(void) 
 {
-	puts("usage: megatron [dir]");
-	return;
+	puts("usage: megatron [-H] [dir]");
+	puts("  -H  print history");
 }
 
 
