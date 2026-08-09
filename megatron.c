@@ -11,6 +11,8 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "config.h" 	/* load default dir and history file */
+
 #define MAXNAME_LEN 255      /* path name must be no longer than this */
 #define MAX_CHILDS  256      /* nodes max children nodes */
 
@@ -66,6 +68,8 @@ int 		tui(struct node *n);
 void 		open_node(void);
 void		close_node(void);
 void		play(void);
+int		assert_history_file(void);
+int		print_history(void);
 
 struct termios old_settings, new_settings;
 int screenrows, screencols;
@@ -79,8 +83,15 @@ main(int argc, char *argv[])
 	int ch;
 	char *dir = NULL;
 
-	while ((ch = getopt(argc, argv, "")) != -1) {
+	if (assert_history_file() != 0)
+		return 1;
+
+	while ((ch = getopt(argc, argv, "h")) != -1) {
 		switch (ch) {
+		case 'h':
+			/* todo: add err handling */
+			print_history();
+			return 0;
 		default:
 			usage();
 		}
@@ -89,12 +100,7 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (argc == 0) {
-		usage();
-		return 1;
-	} else {
-		dir = *argv;
-	}
+	dir = strdup((argc == 0 ? DEFAULT_DIR : *argv));
 
 	/* check dir is a directory */
 	struct stat sb;
@@ -126,6 +132,7 @@ main(int argc, char *argv[])
 
 	tui(root);
 
+	free(dir);
 	node_free_tree(root);
 	return 0;
 }
@@ -612,5 +619,30 @@ tui(struct node *root)
 	write(STDOUT_FILENO, "\x1b[0K", 4);    /* clear line */
 	if (screen_end() == -1) return -1;
 
+	return 0;
+}
+
+/* --- history functions --- */
+
+int
+assert_history_file(void)
+{
+	struct stat sb;
+	if (stat(HISTORY_FILE, &sb) == -1 || !S_ISREG(sb.st_mode)) {
+		perror("Read history");
+		fprintf(stderr, "File does not exist: %s\n", HISTORY_FILE);
+		return -1;
+	}
+	return 0;
+}
+
+int
+print_history(void)
+{
+	FILE *fp = fopen(HISTORY_FILE, "r");
+	if (fp == NULL) {
+		perror("print_history");
+		return 1;
+	}
 	return 0;
 }
