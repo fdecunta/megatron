@@ -15,7 +15,4 @@ install: $(PROG)
 remove:
 	rm -f $(BIN)/$(PROG)
 
-mem: $(PROG)
-	valgrind --leak-check=full ./$(PROG) fake_filmoteca
-
-.PHONY: install remove mem
+.PHONY: install remove 
