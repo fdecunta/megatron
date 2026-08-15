@@ -109,9 +109,12 @@ main(int argc, char *argv[])
 	/* check dir is a directory */
 	struct stat sb;
 	if (stat(dir, &sb) == -1) {
+		if (errno == ENOENT) 
+			fprintf(stderr, "Can't find %s\n", dir);
 		perror("stat");
 		return -1;
 	}
+
 	if (!S_ISDIR(sb.st_mode)) {
 		fprintf(stderr, "Error: %s is not a directory\n", dir);
 		return 1;
