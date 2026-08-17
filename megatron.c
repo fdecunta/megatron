@@ -198,7 +198,7 @@ int
 is_video(const char *filename)
 {
 	size_t i = strlen(filename);
-	for (; filename[i] != '.'; i--)
+	for (; filename[i] != '.' && i > 0; i--)
 		;
 
 	for (int j = 0; video_ext[j] != NULL; j++) {
