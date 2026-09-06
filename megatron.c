@@ -70,6 +70,7 @@ int 		tui(struct node *n);
 void 		open_node(void);
 void		close_node(void);
 void		play(void);
+void 		print_header(const char *s);
 int		history_assert_file(void);
 int		history_print(void);
 int		history_write(const char *path);
@@ -201,12 +202,12 @@ node_build_tree(struct node *n)
 int
 is_video(const char *filename)
 {
-	size_t i = strlen(filename);
-	for (; filename[i] != '.' && i > 0; i--)
-		;
+	char *ext = strrchr(filename, '.');
+	if (ext == NULL) 
+		return 0;
 
 	for (int j = 0; video_ext[j] != NULL; j++) {
-		if (!strcmp(&filename[i + 1], video_ext[j]))
+		if (!strcmp(ext + 1, video_ext[j]))
 			return 1;
 	}
 
