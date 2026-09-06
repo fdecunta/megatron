@@ -99,7 +99,6 @@ main(int argc, char *argv[])
 			usage();
 			return 0;
 		}
-
 	}
 	argc -= optind;
 	argv += optind;
@@ -144,14 +143,12 @@ main(int argc, char *argv[])
 	return 0;
 }
 
-
 void 
 usage(void) 
 {
 	puts("usage: megatron [-H] [dir]");
 	puts("  -H  print history");
 }
-
 
 /* --- Nodes functions --- */
 
@@ -208,7 +205,6 @@ is_video(const char *filename)
 
 	return 0;
 }
-
 
 int
 join_path(char *dst, char *dirname, char *filename, int d_type)
@@ -292,7 +288,6 @@ node_sort_childrens(struct node *n)
 	qsort(n->children, nmemb, sizeof(struct node *), cmpnodes);
 }
 
-
 /* --- tui functions --- */
 
 int
@@ -350,7 +345,8 @@ screen_get_winsize(void)
 	return 0;
 }
 
-void screen_set_cursor(int row, int col)
+void 
+screen_set_cursor(int row, int col)
 {	
 	size_t len;
 	char buf[16];
@@ -358,7 +354,8 @@ void screen_set_cursor(int row, int col)
 	write(STDOUT_FILENO, buf, len);
 }
 
-void mv_cursor(int d)
+void 
+mv_cursor(int d)
 {
 	if (d == UP && stt.index != 0) {
 		if (stt.highlight_row == LIST_ROW) {
@@ -620,9 +617,7 @@ tui(struct node *root)
 				play();
 				break;
 		}
-
 	}
-
 	screen_set_cursor(LIST_ROW + stt.node->n_children - stt.index_top_slice, 1);
 	write(STDOUT_FILENO, "\x1b[0K", 4);    /* clear line */
 	if (screen_end() == -1) return -1;
