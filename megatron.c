@@ -53,27 +53,29 @@ const char *video_ext[] = {
 	NULL
 };  
 
-void 		usage(void);
+
+void		close_node(void);
+static int 	cmpnodes(const void *a, const void *b);
+int		history_assert_file(void);
+int		history_print(void);
+int		history_write(const char *path);
+int 		is_video(const char *filename);
+int 		join_path(char *dst, char *basename, char *filename, int d_type);
 int 		node_build_tree(struct node *n); 
 struct node * 	node_create(int d_type, char *filename, struct node *parent);
 void 		node_free_tree(struct node *n);
 void 		node_sort_childrens(struct node *n);
-int 		join_path(char *dst, char *basename, char *filename, int d_type);
-int 		is_video(const char *filename);
-static int 	cmpnodes(const void *a, const void *b);
+void 		open_node(void);
+void		play(void);
+void 		print_header(const char *s);
 int 		screen_clear(void);
 int 		screen_end(void);
 int 		screen_get_winsize(void);
 int 		screen_init(void);
+void 		screen_cursor_mv(int d);
 void 		screen_set_cursor(int row, int col);
 int 		tui(struct node *n);
-void 		open_node(void);
-void		close_node(void);
-void		play(void);
-void 		print_header(const char *s);
-int		history_assert_file(void);
-int		history_print(void);
-int		history_write(const char *path);
+void 		usage(void);
 
 struct termios old_settings, new_settings;
 int screenrows, screencols;
@@ -383,16 +385,6 @@ mv_cursor(int d)
 		stt.index += 1;
 	}
 	screen_set_cursor(stt.highlight_row, 0);
-}
-
-void 
-show_cursor(void) {
-	write(STDOUT_FILENO, "\x1b[?25h", 6);
-}
-
-void
-hide_cursor(void) {
-	write(STDOUT_FILENO, "\x1b[?25l", 6);
 }
 
 void
