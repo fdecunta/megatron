@@ -14,8 +14,9 @@
 
 #include "config.h" 	/* load DEFAUTL_DIR and HISTORY_FILE */
 
-#define MAXNAME_LEN 255      /* path name must be no longer than this */
-#define MAX_CHILDS  256      /* nodes max children nodes */
+#define MAXNAME_LEN 255 	/* path name must be no longer than this */
+#define MAX_CHILDS  256 	/* nodes max children nodes */
+#define MAX_DEPTH   16 		/* max depth in filetree */ 
 
 enum cursor_direction { UP, DOWN };
 enum { HEADER_ROW = 1, LIST_ROW = 3};
@@ -38,7 +39,7 @@ struct state {
 
 struct stack {
 	int depth;
-	struct state state[16];
+	struct state state[MAX_DEPTH];
 };
 
 const char *video_ext[] = {
@@ -169,6 +170,12 @@ node_build_tree(struct node *n)
 		if (r->d_type != DT_DIR &&
 			r->d_type == DT_REG && 
 			is_video(r->d_name) == 0) continue;
+
+		if (n->n_children >= MAX_CHILDS) {
+			fprintf(stderr, "Warning: %s truncated at %d entries", 
+				n->path, MAX_CHILDS); 
+			break;
+		}
 			
 		struct node *child = node_create(r->d_type, r->d_name, n);
 		if (child == NULL) {
@@ -392,6 +399,11 @@ open_node(void)
 {
 	if (stt.node->n_children == 0 || stt.node->children[stt.index]->type != DT_DIR)
 		return;
+
+	if (state_stack.depth >= MAX_DEPTH) {
+		print_header("Max depth reacherd!");
+		return;
+	}
 
 	/* put state in stack */
 	state_stack.state[state_stack.depth++] = stt;
