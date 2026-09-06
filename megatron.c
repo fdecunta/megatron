@@ -108,6 +108,10 @@ main(int argc, char *argv[])
 	argv += optind;
 
 	dir = strdup((argc == 0 ? DEFAULT_DIR : *argv));
+	if (dir == NULL) {
+		perror("strdup");
+		return -1;
+	}
 
 	/* check dir is a directory */
 	struct stat sb;
