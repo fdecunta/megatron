@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <libgen.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,17 +15,20 @@
 
 #include "config.h" 	/* load DEFAUTL_DIR and HISTORY_FILE */
 
-#define MAXNAME_LEN 255 	/* path name must be no longer than this */
 #define MAX_CHILDS  256 	/* nodes max children nodes */
 #define MAX_DEPTH   16 		/* max depth in filetree */ 
+
+#define ANSI_RESET 	"\x1b[0m"
+#define ANSI_BOLD 	"\x1b[1m"
+#define ANSI_UNDER 	"\x1b[4m"
 
 enum cursor_direction { UP, DOWN };
 enum { HEADER_ROW = 1, LIST_ROW = 3};
 
 struct node {
 	int type;
-	char path[MAXNAME_LEN + 1];
-	char filename[MAXNAME_LEN + 1];
+	char path[PATH_MAX];
+	char filename[NAME_MAX];
 	struct node *parent;
 	struct node *children[MAX_CHILDS];
 	int n_children;
@@ -68,6 +72,8 @@ void 		node_sort_childrens(struct node *n);
 void 		open_node(void);
 void		play(void);
 void 		print_header(const char *s);
+void		print_normal(const char *s);
+void 		print_attr(const char *s, const char *attr);
 int 		screen_clear(void);
 int 		screen_end(void);
 int 		screen_get_winsize(void);
@@ -223,13 +229,13 @@ is_video(const char *filename)
 int
 join_path(char *dst, char *dirname, char *filename, int d_type)
 {
-	memset(dst, '\0', MAXNAME_LEN + 1);
+	memset(dst, '\0', PATH_MAX + 1);
 	char *end = (d_type == DT_DIR ? "/" : "");
-	if (snprintf(dst, MAXNAME_LEN, "%s%s%s", dirname, filename, end) < 0) {
+	if (snprintf(dst, PATH_MAX, "%s%s%s", dirname, filename, end) < 0) {
 		fprintf(stderr, "Error in join_path(); snprintf\n"); 
 		return -1;
 	}
-	dst[MAXNAME_LEN] = '\0';
+	dst[PATH_MAX] = '\0';
 	return 0;
 }
 
@@ -249,7 +255,7 @@ node_create(int d_type, char *filename, struct node *parent)
 	if (join_path(n->path, dirname, filename, d_type) < 0)
 		return NULL;
 
-	strncpy(n->filename, filename, MAXNAME_LEN);
+	strncpy(n->filename, filename, NAME_MAX);
 	size_t len = strlen(filename);
 	n->filename[len] = '\0';
 
@@ -419,50 +425,20 @@ close_node(void)
 }
 
 void
-print_bold(const char *s)
-{
-	size_t len;
-	char buf[MAXNAME_LEN + 1];
-	memset(buf, '\0', MAXNAME_LEN + 1);
-
-	snprintf(buf, MAXNAME_LEN, "\x1b[1m%s\x1b[0m", s);
-	len = (size_t)strlen(buf);
-
-	write(STDOUT_FILENO, buf, len);
-}
-
-void
-print_underline(const char *s)
-{
-	size_t len;
-	char buf[MAXNAME_LEN + 1];
-	memset(buf, '\0', MAXNAME_LEN + 1);
-
-	snprintf(buf, MAXNAME_LEN, "\x1b[4m%s\x1b[0m", s);
-	len = (size_t)strlen(buf);
-
-	write(STDOUT_FILENO, buf, len);
-}
-
-void
-print_underlinebold(const char *s)
-{
-	size_t len;
-	char buf[MAXNAME_LEN + 1];
-	memset(buf, '\0', MAXNAME_LEN + 1);
-
-	snprintf(buf, MAXNAME_LEN, "\x1b[1m\x1b[4m%s\x1b[0m", s);
-	len = (size_t)strlen(buf);
-
-	write(STDOUT_FILENO, buf, len);
-}
-
-void
 print_normal(const char *s)
 {
 	size_t len;
 	len = (size_t)strlen(s);
 	write(STDOUT_FILENO, s, len);
+}
+
+void
+print_attr(const char *s, const char *attr)
+{
+
+	write(STDOUT_FILENO, attr, strlen(attr));
+	print_normal(s);
+	write(STDOUT_FILENO, ANSI_RESET, strlen(ANSI_RESET));
 }
 
 void
@@ -548,11 +524,11 @@ print_node(void)
 		}
 
 		if (i == stt.index && stt.node->children[i]->type == DT_DIR) {
-			print_underlinebold(s);
+			print_attr(s, ANSI_BOLD ANSI_UNDER);
 		} else if (i == stt.index) {
-			print_underline(s);
+			print_attr(s, ANSI_UNDER);
 		} else if (stt.node->children[i]->type == DT_DIR) {
-			print_bold(s);
+			print_attr(s, ANSI_BOLD);
 		} else {
 			print_normal(s);
 		}
