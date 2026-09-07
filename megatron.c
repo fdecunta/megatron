@@ -229,12 +229,14 @@ is_video(const char *filename)
 int
 join_path(char *dst, char *dirname, char *filename, int d_type)
 {
+	int n;
 	char *end = (d_type == DT_DIR ? "/" : "");
-	if (snprintf(dst, PATH_MAX, "%s%s%s", dirname, filename, end) < 0) {
+
+	n = snprintf(dst, PATH_MAX, "%s%s%s", dirname, filename, end);
+	if (n < 0 || n >= PATH_MAX) {
 		fprintf(stderr, "Error in join_path(); snprintf\n"); 
 		return -1;
-	}
-	dst[PATH_MAX - 1] = '\0';
+	} 
 	return 0;
 }
 
