@@ -253,8 +253,10 @@ node_create(int d_type, char *filename, struct node *parent)
 	n->type = d_type;
 	
 	char *dirname = (parent == NULL ? "" : parent->path);
-	if (join_path(n->path, dirname, filename, d_type) < 0)
+	if (join_path(n->path, dirname, filename, d_type) < 0) {
+		free(n);
 		return NULL;
+	}
 
 	strncpy(n->filename, filename, NAME_MAX);
 	size_t len = strlen(filename);
