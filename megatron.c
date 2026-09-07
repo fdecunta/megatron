@@ -376,7 +376,7 @@ screen_set_cursor(int row, int col)
 }
 
 void 
-mv_cursor(int d)
+screen_cursor_mv(int d)
 {
 	if (d == UP && stt.index != 0) {
 		if (stt.highlight_row == LIST_ROW) {
@@ -588,10 +588,10 @@ tui(struct node *root)
 
 		switch (ch) {
 			case 'j':
-				mv_cursor(DOWN);
+				screen_cursor_mv(DOWN);
 				break;
 			case 'k':
-				mv_cursor(UP);
+				screen_cursor_mv(UP);
 				break;
 			case 'l':
 				open_node();
