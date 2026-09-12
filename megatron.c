@@ -30,7 +30,7 @@ enum { HEADER_ROW = 1, LIST_ROW = 3};
 struct node {
 	int type;
 	char path[PATH_MAX];
-	char filename[NAME_MAX];
+	char filename[NAME_MAX + 1];
 	struct node *parent;
 	struct node *children[MAX_CHILDS];
 	int n_children;
@@ -99,10 +99,13 @@ main(int argc, char *argv[])
 	if (stat(HISTORY_FILE, &sb) == -1 || !S_ISREG(sb.st_mode)) 
 		err(EXIT_FAILURE, "history file");
 
-	while ((ch = getopt(argc, argv, "H")) != -1) {
+	while ((ch = getopt(argc, argv, "Hh")) != -1) {
 		switch (ch) {
 		case 'H':
 			history_print();
+			exit(EXIT_SUCCESS);
+		case 'h':
+			usage();
 			exit(EXIT_SUCCESS);
 		default:
 			usage();
@@ -147,7 +150,7 @@ main(int argc, char *argv[])
 void 
 usage(void) 
 {
-	fprintf(stderr, "usage: megatron [-H] [dir]");
+	fprintf(stderr, "usage: megatron [-H] [dir]\n");
 	fprintf(stderr, "  -H  print history");
 }
 
@@ -587,7 +590,9 @@ tui(struct node *root)
 
 	while (ch != 'q') {
 		print_node();
-		read(STDIN_FILENO, &ch, 1);
+		if (read(STDIN_FILENO, &ch, 1) <= 0)
+			break;
+
 		switch (ch) {
 			case 'j':
 				screen_cursor_mv(DOWN);
