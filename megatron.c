@@ -3,6 +3,7 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <err.h>
 #include <errno.h>
 #include <libgen.h>
 #include <limits.h>
@@ -57,11 +58,9 @@ const char *video_ext[] = {
 	NULL
 };  
 
-
 void		close_node(void);
 static int 	cmpnodes(const void *a, const void *b);
-int		history_assert_file(void);
-int		history_print(void);
+void		history_print(void);
 int		history_write(const char *path);
 int 		is_video(const char *filename);
 int 		join_path(char *dst, char *basename, char *filename, int d_type);
@@ -88,80 +87,67 @@ int screenrows, screencols;
 struct state stt; 
 struct stack state_stack;
 
-
 int
 main(int argc, char *argv[]) 
 {
 	errno = 0;
 	int ch;
 	char *dir = NULL;
+	struct stat sb;
 
-	if (history_assert_file() != 0)
-		return 1;
+	if (stat(HISTORY_FILE, &sb) == -1 || !S_ISREG(sb.st_mode)) 
+		err(EXIT_FAILURE, "history file");
 
 	while ((ch = getopt(argc, argv, "H")) != -1) {
 		switch (ch) {
 		case 'H':
-			/* todo: add err handling */
 			history_print();
-			return 0;
+			exit(EXIT_SUCCESS);
 		default:
 			usage();
-			return 0;
+			exit(EXIT_FAILURE);
 		}
 	}
 	argc -= optind;
 	argv += optind;
 
 	dir = strdup((argc == 0 ? DEFAULT_DIR : *argv));
-	if (dir == NULL) {
-		perror("strdup");
-		return -1;
-	}
+	if (dir == NULL) 
+		err(EXIT_FAILURE, "%s", dir);
 
-	/* check dir is a directory */
-	struct stat sb;
-	if (stat(dir, &sb) == -1) {
-		if (errno == ENOENT) 
-			fprintf(stderr, "Can't find %s\n", dir);
-		perror("stat");
-		return -1;
-	}
+	if (stat(dir, &sb) == -1) 
+		err(EXIT_FAILURE, NULL);
+	
+	if (!S_ISDIR(sb.st_mode)) 
+		err(EXIT_FAILURE, "not a directory %s", dir);
 
-	if (!S_ISDIR(sb.st_mode)) {
-		fprintf(stderr, "Error: %s is not a directory\n", dir);
-		return 1;
-	}
-
-	/* remove trailing '/' */
 	size_t len = strlen(dir);
 	if (dir[len - 1] == '/') 
 		dir[len - 1] = '\0';
 
 	struct node *root = node_create(DT_DIR, dir, NULL);
-	if (root == NULL) {
-		fprintf(stderr, "Error: root node is NULL\n");
-		return -1;
-	}
+	if (root == NULL) 
+		err(EXIT_FAILURE, "root node is NULL");
 
 	if (node_build_tree(root) != 0) {
-		fprintf(stderr, "Error: cannot walk on root\n");
+		warn("cannot build root tree");
 		node_free_tree(root);
-		return -1;
+		exit(EXIT_FAILURE);
 	}
 
 	tui(root);
 
 	free(dir);
 	node_free_tree(root);
-	return 0;
+
+	exit(EXIT_SUCCESS);
 }
 
 void 
 usage(void) 
 {
-	puts("usage: megatron [-H] [dir]");
-	puts("  -H  print history");
+	fprintf(stderr, "usage: megatron [-H] [dir]");
+	fprintf(stderr, "  -H  print history");
 }
 
 /* --- Nodes functions --- */
@@ -243,7 +229,6 @@ join_path(char *dst, char *dirname, char *filename, int d_type)
 struct node *
 node_create(int d_type, char *filename, struct node *parent) 
 {
-
 	struct node *n = (struct node *) malloc(sizeof(struct node));
 	if (n == NULL) {
 		perror("node_create malloc");
@@ -338,10 +323,11 @@ screen_init(void)
 int
 screen_end(void)
 {
-	/* TODO: line 180 from screen.c in _top_ from OpenBSD:
-	   they use TCSADRAIN. Don't know if should use that */
+	screen_set_cursor(LIST_ROW + stt.node->n_children - stt.index_top_slice, 1);
+	write(STDOUT_FILENO, "\x1b[0K", 4);    /* clear line */
+
 	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &old_settings) == -1) {
-		perror("tcsetattr in screen_end()");
+		warn("tcsetattr in screen_end()");
 		return -1;
 	}
 	return 0;
@@ -545,22 +531,24 @@ print_node(void)
 void
 play(void)
 {
+	if (stt.node->n_children == 0) 
+		return;
+
 	struct node *sel = stt.node->children[stt.index];
 	if (sel->type != DT_REG)
 		return;
 	
-	history_write(sel->path);
 	pid_t pid = fork();
 
 	if (pid == -1) {
-		perror("fork failed");
+		warn("fork failed");
 		return;
 	} 
 	else if (pid == 0) {
 		execlp("vlc", "vlc", "--play-and-exit", sel->path, (char *)NULL);
-	} else {
-		;
-	}
+	} 
+
+	history_write(sel->path);
 }
 
 int
@@ -585,9 +573,7 @@ tui(struct node *root)
 
 	while (ch != 'q') {
 		print_node();
-
 		read(STDIN_FILENO, &ch, 1);
-
 		switch (ch) {
 			case 'j':
 				screen_cursor_mv(DOWN);
@@ -606,42 +592,23 @@ tui(struct node *root)
 				break;
 		}
 	}
-	screen_set_cursor(LIST_ROW + stt.node->n_children - stt.index_top_slice, 1);
-	write(STDOUT_FILENO, "\x1b[0K", 4);    /* clear line */
-	if (screen_end() == -1) return -1;
-
-	return 0;
+	return screen_end();
 }
 
 /* --- history functions --- */
 
-int
-history_assert_file(void)
-{
-	struct stat sb;
-	if (stat(HISTORY_FILE, &sb) == -1 || !S_ISREG(sb.st_mode)) {
-		perror("Read history");
-		fprintf(stderr, "File does not exist: %s\n", HISTORY_FILE);
-		return -1;
-	}
-	return 0;
-}
-
-int
+void
 history_print(void)
 {
 	FILE *fp = fopen(HISTORY_FILE, "r");
-	if (fp == NULL) {
-		perror("print_history");
-		return 1;
-	}
-
+	if (fp == NULL) 
+		err(EXIT_FAILURE, NULL);
+	
 	int ch;
 	while ((ch = fgetc(fp)) != EOF) 
 		putchar(ch);
 	
-	fclose(fp);
-	return 0;
+	(void)fclose(fp);
 }
 
 int
@@ -649,7 +616,7 @@ history_write(const char *path)
 {
 	FILE *fp = fopen(HISTORY_FILE, "a");
 	if (fp == NULL) {
-		perror("print_history");
+		warn("print_history");
 		return 1;
 	}
 	
@@ -658,9 +625,8 @@ history_write(const char *path)
 	char timestr[64];
 	strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tm);
 
-	fprintf(fp, "%s\t%s\n", timestr, path);
+	(void)fprintf(fp, "%s\t%s\n", timestr, path);
 
-	fclose(fp);
+	(void)fclose(fp);
 	return 0;
-
 }
