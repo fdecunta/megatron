@@ -1,5 +1,6 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include <ctype.h>
 #include <dirent.h>
@@ -113,7 +114,7 @@ main(int argc, char *argv[])
 
 	dir = strdup((argc == 0 ? DEFAULT_DIR : *argv));
 	if (dir == NULL) 
-		err(EXIT_FAILURE, "%s", dir);
+		err(EXIT_FAILURE, "strdup failed");
 
 	if (stat(dir, &sb) == -1) 
 		err(EXIT_FAILURE, NULL);
@@ -190,7 +191,7 @@ node_build_tree(struct node *n)
 	node_sort_childrens(n);
 	
 	if (closedir(dirp) != 0) {
-		perror("node_build_tree");
+		warn("node_build_tree");
 		return -1;
 	}
 
@@ -231,7 +232,7 @@ node_create(int d_type, char *filename, struct node *parent)
 {
 	struct node *n = (struct node *) malloc(sizeof(struct node));
 	if (n == NULL) {
-		perror("node_create malloc");
+		warn("node_create malloc");
 		return NULL;
 	}
 
@@ -244,8 +245,7 @@ node_create(int d_type, char *filename, struct node *parent)
 	}
 
 	strncpy(n->filename, filename, NAME_MAX);
-	size_t len = strlen(filename);
-	n->filename[len] = '\0';
+	n->filename[NAME_MAX] = '\0';
 
 	n->parent = parent;
 	for (int i=0; i < MAX_CHILDS; i++) { n->children[i] = NULL; }
@@ -309,12 +309,12 @@ screen_init(void)
 		new_settings.c_oflag &= (tcflag_t)~(OPOST);
 
 		if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &new_settings) == -1) {
-			perror("tcsetattr in screen_init()");
+			warn("tcsetattr in screen_init()");
 			return -1;
 		}
 
 	} else {
-		perror("enable_raw_mode(); tcgetattr()");
+		warn("enable_raw_mode(); tcgetattr()");
 		return -1;
 	}
 	return 0;
@@ -437,7 +437,7 @@ print_header(const char *s)
 	char *header;
 
 	if ((header = strdup(s)) == NULL) {
-		perror("strdup");
+		warn("strdup failed in print_header");
 		return;
 	}
 
@@ -501,7 +501,7 @@ print_node(void)
 	for (int i = stt.index_top_slice; i < stt.node->n_children && i - stt.index_top_slice <= screenrows - LIST_ROW; i++) {
 		char *s = strdup(stt.node->children[i]->filename);
 		if (s == NULL) {
-			perror("strdup");
+			warn("strdup failed");
 			return;
 		}
 
@@ -537,21 +537,32 @@ play(void)
 	struct node *sel = stt.node->children[stt.index];
 	if (sel->type != DT_REG)
 		return;
+
+	/* end the screen and run vlc. then reload */
+	screen_end();
 	
 	pid_t pid = fork();
-
 	if (pid == -1) {
 		warn("fork failed");
+		(void)screen_init();
 		return;
 	} 
-	else if (pid == 0) {
+	if (pid == 0) {
 		if (execlp("vlc", "vlc", sel->path, NULL) == -1) {
 			warn("error in vlc");
-			return;
+			_exit(EXIT_FAILURE);
 		}
 	} 
 
+	int status;
+	while (waitpid(pid, &status, 0) == -1 && errno == EINTR)
+		;
+
 	history_write(sel->path);
+
+	if (screen_init() == -1)
+		err(EXIT_FAILURE, "cannot re-init screen");
+	screen_get_winsize();
 }
 
 int
