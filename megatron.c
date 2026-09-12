@@ -545,7 +545,10 @@ play(void)
 		return;
 	} 
 	else if (pid == 0) {
-		execlp("vlc", "vlc", "--play-and-exit", sel->path, (char *)NULL);
+		if (execlp("vlc", "vlc", sel->path, NULL) == -1) {
+			warn("error in vlc");
+			return;
+		}
 	} 
 
 	history_write(sel->path);
