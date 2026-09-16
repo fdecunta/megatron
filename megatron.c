@@ -126,7 +126,7 @@ main(int argc, char *argv[])
 		err(EXIT_FAILURE, "not a directory %s", dir);
 
 	size_t len = strlen(dir);
-	if (dir[len - 1] == '/') 
+	if (len > 0 && dir[len - 1] == '/') 
 		dir[len - 1] = '\0';
 
 	struct node *root = node_create(DT_DIR, dir, NULL);
